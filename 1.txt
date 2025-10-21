@@ -1,0 +1,2 @@
+cd C:/Users/Rustmaker/Desktop/Серверная часть
+python manage.py runserver 0.0.0.0:8000
