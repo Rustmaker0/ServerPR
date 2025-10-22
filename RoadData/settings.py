@@ -39,16 +39,22 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
 
+    'corsheaders',  # Добавьте эту строку
     'rest_framework.authtoken',
-    
     'rest_framework',
-
     'Data',
 ]
 
-ALLOWED_HOSTS = ['127.0.0.1', 'localhost', '10.0.2.2']
+ALLOWED_HOSTS = [
+    '127.0.0.1', 
+    'localhost', 
+    '10.0.2.2',
+    'toolbox.b216.ru',
+    'www.toolbox.b216.ru',
+]
 
 MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware',  # Должен быть первым
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -68,6 +74,7 @@ TEMPLATES = [
         'OPTIONS': {
             'context_processors': [
                 'django.template.context_processors.request',
+                'django.template.context_processors.media',  # Добавьте эту строку
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
             ],
