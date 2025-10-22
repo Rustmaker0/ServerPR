@@ -1,2 +1,0 @@
-cd C:/Users/Rustmaker/Desktop/Серверная часть/admin
-npm run dev
