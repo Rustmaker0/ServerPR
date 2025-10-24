@@ -1,5 +1,24 @@
+.env
+*.env
+
+
 # Python 
 __pycache__/ 
 *.pyc 
 *.pyo 
 node_modules/ 
+.venv/
+env/
+
+
+# логи/мусор
+*.log
+.DS_Store
+
+# статика и медиа
+staticfiles/
+media/
+
+# фронтенд 
+node_modules/
+dist/
