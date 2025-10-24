@@ -6,8 +6,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 COPY requirements.txt /app/requirements.txt
-RUN pip install --upgrade pip && \
-    pip install --no-cache-dir --timeout 120 --retries 10 -r requirements.txt
+RUN pip install --no-cache-dir --timeout 300 --retries 20 -r requirements.txt
 
 COPY . /app
 
