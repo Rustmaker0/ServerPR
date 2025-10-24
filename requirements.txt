@@ -5,3 +5,4 @@ gunicorn==23.0.0
 
 # для dockerfile
 django-cors-headers
+pandas
