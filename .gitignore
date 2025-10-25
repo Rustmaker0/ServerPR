@@ -1,8 +1,30 @@
+.env
+*.env
+
+
 # Python 
 __pycache__/ 
 *.pyc 
 *.pyo 
 node_modules/ 
+
 admin/1.2.txt
 1.txt
 коммит.txt
+
+.venv/
+env/
+
+
+# логи/мусор
+*.log
+.DS_Store
+
+# статика и медиа
+staticfiles/
+media/
+
+# фронтенд 
+node_modules/
+dist/
+
