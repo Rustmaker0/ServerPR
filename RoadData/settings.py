@@ -51,6 +51,7 @@ ALLOWED_HOSTS = [
     '10.0.2.2',
     'toolbox.b216.ru',
     'www.toolbox.b216.ru',
+    'www.toolbox-dev.b216.ru:9002',
     'toolbox-dev.b216.ru:9002',
 ]
 
