@@ -51,6 +51,7 @@ ALLOWED_HOSTS = [
     '10.0.2.2',
     'toolbox.b216.ru',
     'www.toolbox.b216.ru',
+    'toolbox-dev.b216.ru:9002',
 ]
 
 MIDDLEWARE = [
