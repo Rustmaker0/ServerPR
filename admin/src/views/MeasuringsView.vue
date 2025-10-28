@@ -9,6 +9,7 @@
             class="btn btn-info"
             @click="showAllRoutesMap"
           >
+          
             <i class="bi bi-map"></i> Показать карту всех путей
           </button>
           <button 
@@ -433,7 +434,7 @@
                 <div class="col-md-6">
                   <div class="info-item">
                     <span class="info-label"><i class="bi bi-clock"></i> Время измерения:</span>
-                    <span class="info-value">{{ new Date(measuring.measurment_time).toLocaleString() }}</span>
+                    <span class="info-value">{{ formatDateTime(measuring.measurment_time) }}</span>
                   </div>
                   <div class="info-item">
                     <span class="info-label"><i class="bi bi-stopwatch"></i> Длительность:</span>
@@ -518,7 +519,7 @@
                           </div>
                           <div class="time-info-compact">
                             <i class="bi bi-clock"></i>
-                            {{ new Date(child.time).toLocaleTimeString() }}
+                            {{ formatTime(child.time) }}
                           </div>
                           <div class="intensivity-data-column">
                             <div class="data-row">
@@ -685,7 +686,28 @@ const getDayOfWeek = (dateString) => {
   const date = new Date(dateString);
   return date.getDay().toString();
 };
+const formatDateTime = (dateString) => {
+  if (!dateString) return 'Не указано';
+  try {
+    const date = new Date(dateString);
+    // Используем UTC компоненты для избежания автоматической корректировки
+    return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')} ${String(date.getUTCHours()).padStart(2, '0')}:${String(date.getUTCMinutes()).padStart(2, '0')}:${String(date.getUTCSeconds()).padStart(2, '0')}`;
+  } catch (error) {
+    console.error('Error formatting date:', error);
+    return 'Ошибка даты';
+  }
+};
 
+const formatTime = (dateString) => {
+  if (!dateString) return 'Не указано';
+  try {
+    const date = new Date(dateString);
+    return `${String(date.getUTCHours()).padStart(2, '0')}:${String(date.getUTCMinutes()).padStart(2, '0')}:${String(date.getUTCSeconds()).padStart(2, '0')}`;
+  } catch (error) {
+    console.error('Error formatting time:', error);
+    return 'Ошибка времени';
+  }
+};
 const hasCoordinates = (measuring) => {
   return (measuring.latitude_start && measuring.longtiude_start) ||
          (measuring.latitude_position && measuring.longtiude_position) ||
@@ -1054,7 +1076,7 @@ const drawAllRoutes = () => {
         polyline.bindPopup(`
           <strong>Измерение ${measuring.id}</strong><br>
           Пользователь: ${getUserDisplayName(measuring.user)}<br>
-          Время: ${new Date(measuring.measurment_time).toLocaleString()}<br>
+          Время: ${formatDateTime(measuring.measurment_time)}<br>
           Точек: ${coordinates.length}<br>
           <button onclick="window.vm.showSingleRouteMapById(${measuring.id})" class="btn btn-sm btn-primary mt-1">
             Показать детально
