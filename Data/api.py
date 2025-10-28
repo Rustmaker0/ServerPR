@@ -6,7 +6,7 @@ from rest_framework.decorators import action
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from django.shortcuts import get_object_or_404
-from rest_framework.authtoken.models import Token #Import Token
+from rest_framework.authtoken.models import Token
 from Data.models import *
 from Data.serializers import *
 
@@ -30,7 +30,6 @@ class MeasuringViewset(
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        # 1. Получаем User ID из заголовка
         user_id = request.headers.get('X-User-Id')
         if user_id is None:
             return Response({"error": "User ID missing"}, status=status.HTTP_400_BAD_REQUEST)
@@ -40,7 +39,6 @@ class MeasuringViewset(
         except User.DoesNotExist:
             return Response({"error": "Invalid User ID"}, status=status.HTTP_400_BAD_REQUEST)
 
-        # 2. Добавляем пользователя в validated_data
         validated_data = serializer.validated_data
         validated_data['user'] = user
 
@@ -49,7 +47,7 @@ class MeasuringViewset(
         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
     def perform_create(self, serializer):
-        serializer.save()  # Сохраняем, user уже есть в validated_data)
+        serializer.save()
 
 class TransportViewset(
     mixins.CreateModelMixin,
@@ -62,7 +60,6 @@ class TransportViewset(
     queryset = Transport.objects.all()
     serializer_class = TransportSerializer
 
-
 class IntensivityViewset(
     mixins.CreateModelMixin,
     mixins.RetrieveModelMixin,
@@ -73,7 +70,6 @@ class IntensivityViewset(
 ):
     queryset = Intensivity.objects.all()
     serializer_class = IntensivitySerializer
-
 
 class PublicTransportViewset(
     mixins.CreateModelMixin,
@@ -86,7 +82,6 @@ class PublicTransportViewset(
     queryset = PublicTransport.objects.all()
     serializer_class = PublicTransportSerializer
 
-
 class PublicTransportNumberViewset(
     mixins.CreateModelMixin,
     mixins.RetrieveModelMixin,
@@ -97,7 +92,6 @@ class PublicTransportNumberViewset(
 ):
     queryset = PublicTransportNumber.objects.all()
     serializer_class = PublicTransportNumberSerializer
-
 
 class PeopleInPublicTransportViewset(
     mixins.CreateModelMixin,
@@ -110,63 +104,93 @@ class PeopleInPublicTransportViewset(
     queryset = PeopleInPublicTransport.objects.all()
     serializer_class = PeopleInPublicTransportSerializer
 
-
 class UserViewset(GenericViewSet):
     queryset = User.objects.all()
+    
     def get_serializer_class(self):
-            if self.action == 'register':
-                return UserRegistrationSerializer
-            elif self.action in ['update', 'partial_update']:
-                return UserUpdateSerializer
-            elif self.action == 'list':
-                return UserDetailSerializer
-            return UserSerializer
+        if self.action == 'register':
+            return UserRegistrationSerializer
+        elif self.action in ['update', 'partial_update']:
+            return UserUpdateSerializer
+        elif self.action == 'list':
+            return UserDetailSerializer
+        return UserSerializer
 
-    @action(url_path="login", methods=["POST"], detail=False)
-    def login(self, request, *args, **kwargs):
-        username = request.data.get("user")
+    # Вход для суперпользователя
+    @action(url_path="superuser-login", methods=["POST"], detail=False)
+    def superuser_login(self, request, *args, **kwargs):
+        username = request.data.get("username")
         password = request.data.get("password")
 
         user = authenticate(request, username=username, password=password)
-        if user:
+        if user and user.is_superuser:
+            # Удаляем старый токен, если есть
+            Token.objects.filter(user=user).delete()
+            
+            # Создаем новый токен
+            token = Token.objects.create(user=user)
+            
+            # Логиним пользователя в сессии
             login(request, user)
-            serializer = UserSerializer(user)  # Serialize user data
-            token, created = Token.objects.get_or_create(user=user) #Создание токена
-            return Response({'token': token.key, **serializer.data}) # Возвращаем токен вместе с данными пользователя
-        else:
-            return Response({"error": "Invalid credentials"}, status=status.HTTP_401_UNAUTHORIZED)
-
-    @action(url_path="logout", methods=["POST"], detail=False)
-    def logout(self, request, *args, **kwargs):
-        logout(request)
-        return Response({"message": "Logout successful"}, status=status.HTTP_200_OK)
-    
-    # Регистрация одного пользователя
-    @action(url_path="register", methods=["POST"], detail=False)
-    def register(self, request, *args, **kwargs):
-        serializer = UserRegistrationSerializer(data=request.data)
-        if serializer.is_valid():
-            user = serializer.save()
+            
             return Response({
-                "message": "Пользователь успешно зарегистрирован",
-                "user": UserSerializer(user).data
-            }, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+                'token': token.key, 
+                'user': {
+                    'id': user.id,
+                    'username': user.username,
+                    'email': user.email,
+                    'first_name': user.first_name,
+                    'last_name': user.last_name,
+                    'is_superuser': user.is_superuser
+                },
+                'message': 'Успешный вход как суперпользователь'
+            })
+        else:
+            return Response({
+                "error": "Неверные учетные данные или недостаточно прав"
+            }, status=status.HTTP_401_UNAUTHORIZED)
 
-    # Получение списка пользователей
+    @action(url_path="check-superuser", methods=["GET"], detail=False)
+    def check_superuser(self, request, *args, **kwargs):
+        # Проверяем как по токену, так и по сессии
+        if request.user.is_authenticated and request.user.is_superuser:
+            return Response({
+                "is_superuser": True, 
+                "user": UserSerializer(request.user).data
+            })
+        
+        # Дополнительная проверка по токену
+        if request.auth and hasattr(request.auth, 'user'):
+            user = request.auth.user
+            if user.is_superuser:
+                return Response({
+                    "is_superuser": True, 
+                    "user": UserSerializer(user).data
+                })
+        
+        return Response({"is_superuser": False}, status=status.HTTP_403_FORBIDDEN)
+
+    # Защищенные endpoints - требуют права суперпользователя
     def list(self, request, *args, **kwargs):
+        if not request.user.is_authenticated or not request.user.is_superuser:
+            return Response({"error": "Требуются права суперпользователя"}, status=status.HTTP_403_FORBIDDEN)
+        
         users = User.objects.all().order_by('-date_joined')
         serializer = UserDetailSerializer(users, many=True)
         return Response(serializer.data)
 
-    # Получение деталей пользователя
     def retrieve(self, request, *args, **kwargs):
+        if not request.user.is_authenticated or not request.user.is_superuser:
+            return Response({"error": "Требуются права суперпользователя"}, status=status.HTTP_403_FORBIDDEN)
+        
         user = self.get_object()
         serializer = UserDetailSerializer(user)
         return Response(serializer.data)
 
-    # Обновление пользователя
     def update(self, request, *args, **kwargs):
+        if not request.user.is_authenticated or not request.user.is_superuser:
+            return Response({"error": "Требуются права суперпользователя"}, status=status.HTTP_403_FORBIDDEN)
+        
         user = self.get_object()
         serializer = UserUpdateSerializer(user, data=request.data, partial=False)
         if serializer.is_valid():
@@ -177,8 +201,10 @@ class UserViewset(GenericViewSet):
             })
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-    # Частичное обновление
     def partial_update(self, request, *args, **kwargs):
+        if not request.user.is_authenticated or not request.user.is_superuser:
+            return Response({"error": "Требуются права суперпользователя"}, status=status.HTTP_403_FORBIDDEN)
+        
         user = self.get_object()
         serializer = UserUpdateSerializer(user, data=request.data, partial=True)
         if serializer.is_valid():
@@ -189,12 +215,13 @@ class UserViewset(GenericViewSet):
             })
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-    # Удаление пользователя
     def destroy(self, request, *args, **kwargs):
+        if not request.user.is_authenticated or not request.user.is_superuser:
+            return Response({"error": "Требуются права суперпользователя"}, status=status.HTTP_403_FORBIDDEN)
+        
         user = self.get_object()
         username = user.username
         
-        # Проверяем, является ли пользователь суперпользователем
         if user.is_superuser:
             return Response({
                 "error": "Нельзя удалить суперпользователя"
@@ -205,16 +232,33 @@ class UserViewset(GenericViewSet):
             "message": f"Пользователь {username} успешно удален"
         }, status=status.HTTP_200_OK)
 
-    # Импорт пользователей из Excel
+    # Регистрация пользователя (только для суперпользователей)
+    @action(url_path="register", methods=["POST"], detail=False)
+    def register(self, request, *args, **kwargs):
+        if not request.user.is_authenticated or not request.user.is_superuser:
+            return Response({"error": "Требуются права суперпользователя"}, status=status.HTTP_403_FORBIDDEN)
+        
+        serializer = UserRegistrationSerializer(data=request.data)
+        if serializer.is_valid():
+            user = serializer.save()
+            return Response({
+                "message": "Пользователь успешно зарегистрирован",
+                "user": UserSerializer(user).data
+            }, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    # Импорт пользователей (только для суперпользователей)
     @action(url_path="import-users", methods=["POST"], detail=False)
     def import_users(self, request, *args, **kwargs):
+        if not request.user.is_authenticated or not request.user.is_superuser:
+            return Response({"error": "Требуются права суперпользователя"}, status=status.HTTP_403_FORBIDDEN)
+        
         if 'excel_file' not in request.FILES:
             return Response({"error": "Файл не найден"}, status=status.HTTP_400_BAD_REQUEST)
 
         excel_file = request.FILES['excel_file']
         
         try:
-            # Читаем Excel файл
             df = pd.read_excel(excel_file)
             
             required_columns = ['username', 'email', 'password']
@@ -237,7 +281,6 @@ class UserViewset(GenericViewSet):
                         'password_confirm': str(row['password'])
                     }
 
-                    # Добавляем опциональные поля
                     if 'first_name' in df.columns and pd.notna(row['first_name']):
                         user_data['first_name'] = str(row['first_name']).strip()
                     if 'last_name' in df.columns and pd.notna(row['last_name']):
@@ -270,10 +313,9 @@ class UserViewset(GenericViewSet):
             return Response({"error": f"Ошибка при обработке файла: {str(e)}"}, 
                           status=status.HTTP_400_BAD_REQUEST)
 
-    # Скачивание шаблона Excel
+    # Скачивание шаблона (доступно всем)
     @action(url_path="download-template", methods=["GET"], detail=False)
     def download_template(self, request, *args, **kwargs):
-        # Создаем шаблон DataFrame
         template_data = {
             'username': ['example_user1', 'example_user2'],
             'email': ['user1@example.com', 'user2@example.com'],
@@ -284,7 +326,6 @@ class UserViewset(GenericViewSet):
         
         df = pd.DataFrame(template_data)
         
-        # Создаем Excel файл в памяти
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
             df.to_excel(writer, sheet_name='Шаблон', index=False)
@@ -298,3 +339,38 @@ class UserViewset(GenericViewSet):
         response['Content-Disposition'] = 'attachment; filename="user_import_template.xlsx"'
         
         return response
+
+    # Старый метод входа (оставляем для совместимости)
+    @action(url_path="login", methods=["POST"], detail=False)
+    def login(self, request, *args, **kwargs):
+        username = request.data.get("user")
+        password = request.data.get("password")
+
+        user = authenticate(request, username=username, password=password)
+        if user:
+            login(request, user)
+            serializer = UserSerializer(user)
+            token, created = Token.objects.get_or_create(user=user)
+            return Response({'token': token.key, **serializer.data})
+        else:
+            return Response({"error": "Invalid credentials"}, status=status.HTTP_401_UNAUTHORIZED)
+
+    @action(url_path="logout", methods=["POST"], detail=False)
+    def logout(self, request, *args, **kwargs):
+        if request.user.is_authenticated:
+            # Удаляем токен аутентификации
+            try:
+                Token.objects.filter(user=request.user).delete()
+            except Token.DoesNotExist:
+                pass
+            
+            # Выход из системы Django
+            logout(request)
+            
+            return Response({
+                "message": "Успешный выход из системы"
+            }, status=status.HTTP_200_OK)
+        else:
+            return Response({
+                "message": "Пользователь не был аутентифицирован"
+            }, status=status.HTTP_200_OK)

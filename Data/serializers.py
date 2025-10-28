@@ -69,10 +69,11 @@ class UserSerializer(serializers.ModelSerializer):
 class UserRegistrationSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, required=True, min_length=6)
     password_confirm = serializers.CharField(write_only=True, required=True)
+    is_superuser = serializers.BooleanField(default=False, required=False)
 
     class Meta:
         model = User
-        fields = ['username', 'email', 'password', 'password_confirm', 'first_name', 'last_name']
+        fields = ['username', 'email', 'password', 'password_confirm', 'first_name', 'last_name', 'is_superuser']
 
     def validate(self, attrs):
         if attrs['password'] != attrs['password_confirm']:
@@ -81,9 +82,14 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         validated_data.pop('password_confirm')
+        is_superuser = validated_data.pop('is_superuser', False)
         user = User.objects.create_user(**validated_data)
+        if is_superuser:
+            user.is_superuser = True
+            user.is_staff = True  # Обычно суперпользователь также является staff
+            user.save()
         return user
-
+        
 class UserUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
