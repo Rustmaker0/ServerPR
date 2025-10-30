@@ -6,7 +6,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 COPY requirements.txt /app/requirements.txt
-RUN pip install --no-cache-dir --timeout 300 --retries 20 -r requirements.txt
+RUN python -m pip install --upgrade pip setuptools wheel && \
+    pip install --no-cache-dir --prefer-binary --timeout 600 --retries 10 -r requirements.txt && \
+    mkdir -p /var/log/gunicorn && chmod -R 755 /var/log/gunicorn
 
 COPY . /app
 
