@@ -7,16 +7,17 @@ pipeline {
     timeout(time: 40, unit: 'MINUTES')
   }
 
-  environment {
+   environment {
     REPO_URL       = 'https://github.com/Rustmaker0/ServerPR.git'
     BRANCH         = 'main'
     GITHUB_CREDS   = 'github-token'
 
-    IMAGE_NAME     = 'serverpr-web'
-    IMAGE_TAG      = 'latest'   
-    CONTAINER_NAME = 'serverpr-web'
-    APP_PATH       = '/opt/app'
-    GUNICORN_PORT  = '8000'
+    IMAGE_NAME_BASE = 'serverpr-web' 
+    IMAGE_TAG       = 'latest'
+    IMAGE_NAME      = "${IMAGE_NAME_BASE}:${IMAGE_TAG}"
+    CONTAINER_NAME  = 'serverpr-web'
+    APP_PATH        = '/opt/app'
+    GUNICORN_PORT   = '8000'
   }
 
   stages {
