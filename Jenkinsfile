@@ -43,12 +43,12 @@ pipeline {
 
     stage('Preflight checks') {
       steps {
-        sh '''
+        sh '''#!/bin/bash
           set -euo pipefail
           test -f Dockerfile || { echo "Dockerfile missing"; exit 1; }
           test -f requirements.txt || { echo "requirements.txt missing"; exit 1; }
 
-          # Запрет merge-маркеров в критичных файлах
+ 
           if git grep -nE "^(<<<<<<<|=======|>>>>>>>)" -- Dockerfile || \
              git grep -nE "^(<<<<<<<|=======|>>>>>>>)" -- Jenkinsfile 2>/dev/null || \
              git grep -nE "^(<<<<<<<|=======|>>>>>>>)" -- admin/package*.json 2>/dev/null; then
