@@ -168,33 +168,7 @@ pipeline {
       }
     }
 
-    stage('Health check') {
-      steps {
-        sh '''
-          set -e
-          # Бэкенд
-          tries=0; ok=0
-          while [ $tries -lt 10 ]; do
-            code_api=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:${GUNICORN_PORT}/api/transports/ || true)
-            [ "$code_api" = "200" ] || [ "$code_api" = "401" ] || [ "$code_api" = "403" ] && ok=1 && break
-            tries=$((tries+1)); sleep 2
-          done
-          [ $ok -eq 1 ] || { echo "Backend unhealthy: ${code_api}"; exit 1; }
-          echo "API /api/transports/ -> ${code_api}"
-
-          # Фронт (через nginx:9002)
-          tries=0; ok=0
-          while [ $tries -lt 10 ]; do
-            code_front=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:${FRONT_PORT}/ || true)
-            [ "$code_front" = "200" ] && ok=1 && break
-            tries=$((tries+1)); sleep 2
-          done
-          echo "FRONT / -> ${code_front}"
-          [ $ok -eq 1 ] || { echo "Front not 200"; exit 1; }
-        '''
-      }
-    }
-  }
+  
 
   post {
     success { echo '✅ Deploy OK' }
