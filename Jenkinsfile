@@ -8,18 +8,15 @@ pipeline {
   }
 
   environment {
-    REPO_URL        = 'https://github.com/Rustmaker0/ServerPR.git'
-    BRANCH          = 'main'
-    GITHUB_CREDS    = 'github-token'
+    REPO_URL       = 'https://github.com/Rustmaker0/ServerPR.git'
+    BRANCH         = 'main'
+    GITHUB_CREDS   = 'github-token'
 
-    IMAGE_NAME_BASE = 'serverpr-web'
-    IMAGE_TAG       = ''
-    IMAGE_NAME      = ''
-    CONTAINER_NAME  = 'serverpr-web'
-
-    APP_PATH        = '/opt/app'
-    GUNICORN_PORT   = '8000'
-    FRONT_PORT      = '9002'
+    IMAGE_NAME     = 'serverpr-web'
+    IMAGE_TAG      = 'latest'   
+    CONTAINER_NAME = 'serverpr-web'
+    APP_PATH       = '/opt/app'
+    GUNICORN_PORT  = '8000'
   }
 
   stages {
