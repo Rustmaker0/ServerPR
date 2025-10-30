@@ -168,7 +168,7 @@ pipeline {
       }
     }
 
-  
+  }
 
   post {
     success { echo '✅ Deploy OK' }
