@@ -9,7 +9,6 @@
             class="btn btn-info"
             @click="showAllRoutesMap"
           >
-          
             <i class="bi bi-map"></i> Показать карту всех путей
           </button>
           <button 
@@ -262,6 +261,15 @@
                       <option v-for="street in uniqueStreets" :key="street" :value="street">{{ street }}</option>
                     </select>
                   </div>
+                  <!-- ФИЛЬТР УДАЛЕНИЯ -->
+                  <div class="col-12">
+                    <label class="form-label small">Статус удаления</label>
+                    <select class="form-select" v-model="filters.isDeleted">
+                      <option value="all">Все записи</option>
+                      <option value="deleted">Только удаленные</option>
+                      <option value="active">Только активные</option>
+                    </select>
+                  </div>
                 </div>
               </div>
 
@@ -396,6 +404,10 @@
                 <div>
                   <h5 class="card-title mb-0">
                     <i class="bi bi-clipboard-data"></i> Измерение №{{ measuring.id }}
+                    <!-- ЗНАЧОК УДАЛЕНИЯ -->
+                    <span v-if="measuring.is_deleated == 1" class="ms-2 text-warning" title="Удалено">
+                      <i class="bi bi-trash-fill"></i>
+                    </span>
                   </h5>
                 </div>
                 <div class="d-flex gap-2">
@@ -609,7 +621,8 @@ const filters = ref({
   streetName: '',
   transportTypes: [],
   passengerTransportTypes: [],
-  mapSelection: null // { lat, lng, radius }
+  mapSelection: null, // { lat, lng, radius }
+  isDeleted: 'all' // 'all', 'deleted', 'active'
 });
 
 const transportsById = computed(() => _.keyBy(transports.value, x => x.id));
@@ -686,6 +699,7 @@ const getDayOfWeek = (dateString) => {
   const date = new Date(dateString);
   return date.getDay().toString();
 };
+
 const formatDateTime = (dateString) => {
   if (!dateString) return 'Не указано';
   try {
@@ -708,6 +722,7 @@ const formatTime = (dateString) => {
     return 'Ошибка времени';
   }
 };
+
 const hasCoordinates = (measuring) => {
   return (measuring.latitude_start && measuring.longtiude_start) ||
          (measuring.latitude_position && measuring.longtiude_position) ||
@@ -784,6 +799,18 @@ const getTempSelectionMeasurements = () => {
 // Основная функция применения фильтров
 const applyFilters = () => {
   let filtered = measurements.value;
+
+  // Фильтр по статусу удаления
+  if (filters.value.isDeleted !== 'all') {
+    filtered = filtered.filter(measuring => {
+      if (filters.value.isDeleted === 'deleted') {
+        return measuring.is_deleated == 1;
+      } else if (filters.value.isDeleted === 'active') {
+        return measuring.is_deleated != 1;
+      }
+      return true;
+    });
+  }
 
   // Фильтр по карте
   if (filters.value.mapSelection) {
@@ -898,7 +925,8 @@ const resetFilters = () => {
     streetName: '',
     transportTypes: [],
     passengerTransportTypes: [],
-    mapSelection: null
+    mapSelection: null,
+    isDeleted: 'all'
   };
   clearMapSelection();
   filteredMeasurements.value = [...measurements.value];
