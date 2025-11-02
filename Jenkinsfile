@@ -7,12 +7,12 @@ pipeline {
     timeout(time: 40, unit: 'MINUTES')
   }
 
-   environment {
+  environment {
     REPO_URL       = 'https://github.com/Rustmaker0/ServerPR.git'
     BRANCH         = 'main'
     GITHUB_CREDS   = 'github-token'
 
-    IMAGE_NAME_BASE = 'serverpr-web' 
+    IMAGE_NAME_BASE = 'serverpr-web'
     IMAGE_TAG       = 'latest'
     IMAGE_NAME      = "${IMAGE_NAME_BASE}:${IMAGE_TAG}"
     CONTAINER_NAME  = 'serverpr-web'
@@ -48,7 +48,6 @@ pipeline {
           test -f Dockerfile || { echo "Dockerfile missing"; exit 1; }
           test -f requirements.txt || { echo "requirements.txt missing"; exit 1; }
 
- 
           if git grep -nE "^(<<<<<<<|=======|>>>>>>>)" -- Dockerfile || \
              git grep -nE "^(<<<<<<<|=======|>>>>>>>)" -- Jenkinsfile 2>/dev/null || \
              git grep -nE "^(<<<<<<<|=======|>>>>>>>)" -- admin/package*.json 2>/dev/null; then
@@ -65,8 +64,18 @@ pipeline {
         sh '''
           set -e
           echo "Disk before:"; df -h || true
-          docker builder prune -af || true
-          DOCKER_BUILDKIT=1 docker build --pull --network=host -t "${IMAGE_NAME}" .
+
+          # Создаём кэш директорию, если нет
+          mkdir -p /var/lib/docker/cache || true
+
+          # Используем BuildKit cache для ускорения
+          DOCKER_BUILDKIT=1 docker build \
+            --pull \
+            --network=host \
+            --cache-from type=local,src=/var/lib/docker/cache \
+            --cache-to type=local,dest=/var/lib/docker/cache,mode=max \
+            -t "${IMAGE_NAME}" .
+
           docker image tag "${IMAGE_NAME}" "${IMAGE_NAME_BASE}:latest" || true
         '''
       }
@@ -93,6 +102,7 @@ pipeline {
           elif [ -f .env.example ]; then
             cp .env.example ${APP_PATH}/.env
           fi
+
           grep -q '^DJANGO_SETTINGS_MODULE=' ${APP_PATH}/.env 2>/dev/null || \
             echo 'DJANGO_SETTINGS_MODULE=RoadData.settings_prod' >> ${APP_PATH}/.env
         '''
@@ -142,12 +152,15 @@ pipeline {
           set -e
           UID=$(id -u); GID=$(id -g)
 
-          # Сборка фронта
+          # Кэш для npm
+          docker volume create npm_cache || true
+
+          # Сборка фронта (с кэшем)
           docker run --rm -u $UID:$GID \
-            -e HOME=/tmp -e NPM_CONFIG_CACHE=/tmp/.npm \
+            -e HOME=/tmp \
+            -v npm_cache:/tmp/.npm \
             -v "$PWD/admin:/app" -w /app node:20 bash -lc '
-              rm -rf node_modules \
-              && ( [ -f package-lock.json ] && npm ci --prefer-offline --no-audit --fund=false || npm install ) \
+              ( [ -f package-lock.json ] && npm ci --prefer-offline --no-audit --fund=false || npm install ) \
               && npm run build
             '
 
@@ -163,7 +176,7 @@ pipeline {
           find ${APP_PATH}/admin -type f -exec chmod 644 {} \\; || true
 
           # Очистка workspace
-          rm -rf admin/dist admin/node_modules || true
+          rm -rf admin/dist || true
         '''
       }
     }
