@@ -20,17 +20,32 @@
           </button>
         </div>
         
-        <!-- Кнопка фильтров -->
-        <button 
-          v-if="!showMap"
-          class="btn btn-primary"
-          @click="showFilters = !showFilters"
-        >
-          <i class="bi bi-funnel"></i> Фильтры
-          <span v-if="filteredMeasurements.length !== measurements.length" class="badge bg-light text-dark ms-1">
-            {{ filteredMeasurements.length }}/{{ measurements.length }}
-          </span>
-        </button>
+        <!-- Компактная панель фильтров -->
+        <div v-if="!showMap" class="d-flex align-items-center gap-2">
+          <!-- Быстрый поиск -->
+          <div class="input-group input-group-sm" style="width: 250px;">
+            <span class="input-group-text"><i class="bi bi-search"></i></span>
+            <input
+              type="text"
+              class="form-control"
+              v-model="filters.search"
+              placeholder="Быстрый поиск..."
+              @input="applyFilters"
+            >
+          </div>
+          
+          <!-- Кнопка фильтров -->
+          <button 
+            class="btn btn-sm" 
+            :class="showFilters ? 'btn-primary' : 'btn-outline-primary'"
+            @click="showFilters = !showFilters"
+          >
+            <i class="bi bi-funnel"></i> Фильтры
+            <span v-if="hasActiveFilters" class="badge bg-light text-dark ms-1">
+              {{ filteredMeasurements.length }}/{{ measurements.length }}
+            </span>
+          </button>
+        </div>
       </div>
 
       <!-- Блок выбранной области -->
@@ -40,11 +55,17 @@
             <div class="d-flex justify-content-between align-items-center">
               <div>
                 <h6 class="card-title mb-1 text-primary">
-                  <i class="bi bi-geo-alt-fill"></i> Выбранная область на карте
+                  <i class="bi bi-geo-alt-fill"></i> 
+                  {{ filters.mapSelection.type === 'circle' ? 'Круглая область' : 'Область из 4 точек' }}
                 </h6>
                 <div class="small text-muted">
-                  Центр: [{{ filters.mapSelection.lat.toFixed(6) }}, {{ filters.mapSelection.lng.toFixed(6) }}] 
-                  • Радиус: {{ filters.mapSelection.radius }} метров
+                  <template v-if="filters.mapSelection.type === 'circle'">
+                    Центр: [{{ filters.mapSelection.lat.toFixed(6) }}, {{ filters.mapSelection.lng.toFixed(6) }}] 
+                    • Радиус: {{ filters.mapSelection.radius }} метров
+                  </template>
+                  <template v-else>
+                    Четырехугольник • {{ filters.mapSelection.points.length }} точек
+                  </template>
                   • Измерений в области: {{ getMeasurementsInSelection().length }}
                 </div>
               </div>
@@ -64,32 +85,85 @@
           <div class="card-header d-flex justify-content-between align-items-center">
             <h5 class="card-title mb-0">
               <i class="bi bi-geo-alt"></i> Карта всех путей измерений
+              <span class="badge bg-info ms-2">
+                {{ getMeasurementsForMap.length }} записей
+              </span>
               <span v-if="tempMapSelection" class="badge bg-warning ms-2">Область выбрана</span>
             </h5>
             <div class="d-flex align-items-center gap-3">
-              <!-- Управление радиусом выбора -->
-              <div class="radius-control">
+              <!-- Выбор типа области -->
+              <div class="selection-type-control">
                 <label class="form-label mb-0 me-2">
-                  <i class="bi bi-bullseye"></i> Радиус:
+                  <i class="bi bi-bounding-box"></i> Тип области:
                 </label>
-                <div class="input-group input-group-sm" style="width: 200px;">
-                  <input 
-                    type="range" 
-                    class="form-range" 
-                    min="10" 
-                    max="300" 
-                    step="10"
-                    v-model="selectionRadius"
-                    @change="updateTempSelectionRadius"
+                <div class="btn-group btn-group-sm">
+                  <button 
+                    class="btn" 
+                    :class="selectionType === 'circle' ? 'btn-primary' : 'btn-outline-primary'"
+                    @click="setSelectionType('circle')"
                   >
-                  <span class="input-group-text">{{ selectionRadius }} м</span>
+                    <i class="bi bi-circle"></i> Круг
+                  </button>
+                  <button 
+                    class="btn" 
+                    :class="selectionType === 'polygon' ? 'btn-primary' : 'btn-outline-primary'"
+                    @click="setSelectionType('polygon')"
+                  >
+                    <i class="bi bi-square"></i> 4 точки
+                  </button>
                 </div>
+              </div>
+
+              <!-- Управление радиусом выбора (только для круга) -->
+<div class="radius-control" v-if="selectionType === 'circle'">
+  <label class="form-label mb-2">
+    <i class="bi bi-bullseye"></i> Радиус выбора:
+  </label>
+  
+  <!-- Числовое поле ввода -->
+  <div class="input-group input-group-sm mb-2" style="width: 200px;">
+    <input 
+      type="number" 
+      class="form-control" 
+      min="10" 
+      max="1000" 
+      step="10"
+      v-model.number="selectionRadius"
+      @input="updateTempSelectionRadius"
+      placeholder="Введите радиус"
+    >
+    <span class="input-group-text">м</span>
+  </div>
+  
+  <!-- Ползунок для тонкой настройки -->
+  <div class="d-flex align-items-center gap-2">
+    <small>10м</small>
+    <input 
+      type="range" 
+      class="form-range flex-grow-1" 
+      min="10" 
+      max="300" 
+      step="10"
+      v-model.number="selectionRadius"
+      @input="updateTempSelectionRadius"
+    >
+    <small>300м</small>
+    <span class="badge bg-primary ms-2">{{ selectionRadius }}м</span>
+  </div>
+</div>
+
+              <!-- Информация о полигоне -->
+              <div v-if="selectionType === 'polygon'" class="polygon-info">
+                <small class="text-muted">
+                  Точек: {{ polygonPoints.length }}/4
+                </small>
               </div>
               
               <button 
                 v-if="tempMapSelection"
                 class="btn btn-sm btn-success"
                 @click="applyTempSelection"
+                :disabled="selectionType === 'polygon' && polygonPoints.length !== 4"
               >
                 <i class="bi bi-check-lg"></i> Применить выбор
               </button>
@@ -101,13 +175,64 @@
               >
                 <i class="bi bi-x-circle"></i> Отмена
               </button>
+
+              <!-- Кнопка очистки точек полигона -->
+              <button 
+                v-if="selectionType === 'polygon' && polygonPoints.length > 0"
+                class="btn btn-sm btn-outline-danger"
+                @click="clearPolygonPoints"
+              >
+                <i class="bi bi-trash"></i> Очистить точки
+              </button>
             </div>
           </div>
           
           <div class="card-body">
             <div class="alert alert-info mb-3">
               <i class="bi bi-info-circle"></i> 
-              <strong>Инструкция:</strong> Кликните на карте для выбора области. Настройте радиус и нажмите "Применить выбор".
+              <strong>Инструкция:</strong> 
+              <template v-if="selectionType === 'circle'">
+                Кликните на карте для выбора центра области. Настройте радиус и нажмите "Применить выбор".
+              </template>
+              <template v-else>
+                Кликните на карте чтобы добавить 4 точки для создания четырехугольника. После добавления 4 точек нажмите "Применить выбор".
+              </template>
+              <div v-if="hasActiveFilters" class="mt-1">
+                <small><strong>На карте показаны отфильтрованные записи:</strong> {{ getMeasurementsForMap.length }} из {{ measurements.length }}</small>
+              </div>
+            </div>
+
+            <!-- Список точек полигона -->
+            <div v-if="selectionType === 'polygon' && polygonPoints.length > 0" class="polygon-points-list mb-3">
+              <h6 class="section-title">
+                <i class="bi bi-geo-alt"></i> Точки четырехугольника:
+                <span class="badge" :class="polygonPoints.length === 4 ? 'bg-success' : 'bg-warning'">
+                  {{ polygonPoints.length }}/4
+                </span>
+              </h6>
+              <div class="points-grid">
+                <div 
+                  v-for="(point, index) in polygonPoints" 
+                  :key="index"
+                  class="point-item"
+                  :class="{ 'active': currentPointIndex === index }"
+                  @click="focusOnPoint(index)"
+                >
+                  <div class="point-header">
+                    <span class="point-number">Точка {{ index + 1 }}</span>
+                    <button 
+                      class="btn btn-sm btn-outline-danger"
+                      @click.stop="removePolygonPoint(index)"
+                      title="Удалить точку"
+                    >
+                      <i class="bi bi-x"></i>
+                    </button>
+                  </div>
+                  <div class="point-coordinates">
+                    [{{ point.lat.toFixed(6) }}, {{ point.lng.toFixed(6) }}]
+                  </div>
+                </div>
+              </div>
             </div>
             
             <div id="map" class="map-container"></div>
@@ -118,11 +243,11 @@
                   <strong>Статистика:</strong>
                   <div class="small text-muted mt-1">
                     Всего измерений: {{ measurements.length }}<br>
-                    С координатами: {{ measurements.filter(m => hasCoordinates(m)).length }}<br>
+                    Показано на карте: {{ getMeasurementsForMap.length }}<br>
                     <template v-if="tempMapSelection">
                       В выбранной области: {{ getTempSelectionMeasurements().length }}
                     </template>
-                    <template v-else>
+                    <template v-else-if="filters.mapSelection">
                       В выбранной области: {{ getMeasurementsInSelection().length }}
                     </template>
                   </div>
@@ -130,15 +255,25 @@
                 <div class="col-md-6 text-end">
                   <small class="text-muted">
                     <template v-if="tempMapSelection">
-                      Центр: [{{ tempMapSelection.lat.toFixed(6) }}, {{ tempMapSelection.lng.toFixed(6) }}]<br>
-                      Радиус: {{ tempMapSelection.radius }} м
+                      <template v-if="tempMapSelection.type === 'circle'">
+                        Центр: [{{ tempMapSelection.lat.toFixed(6) }}, {{ tempMapSelection.lng.toFixed(6) }}]<br>
+                        Радиус: {{ tempMapSelection.radius }} м
+                      </template>
+                      <template v-else>
+                        Четырехугольник • {{ tempMapSelection.points.length }} точек
+                      </template>
                     </template>
                     <template v-else-if="filters.mapSelection">
-                      Центр: [{{ filters.mapSelection.lat.toFixed(6) }}, {{ filters.mapSelection.lng.toFixed(6) }}]<br>
-                      Радиус: {{ filters.mapSelection.radius }} м
+                      <template v-if="filters.mapSelection.type === 'circle'">
+                        Центр: [{{ filters.mapSelection.lat.toFixed(6) }}, {{ filters.mapSelection.lng.toFixed(6) }}]<br>
+                        Радиус: {{ filters.mapSelection.radius }} м
+                      </template>
+                      <template v-else>
+                        Четырехугольник • {{ filters.mapSelection.points.length }} точек
+                      </template>
                     </template>
                     <template v-else>
-                      Выберите область на карте
+                      {{ hasActiveFilters ? 'Показаны отфильтрованные записи' : 'Показаны все записи' }}
                     </template>
                   </small>
                 </div>
@@ -199,9 +334,10 @@
           <div class="card-header d-flex justify-content-between align-items-center">
             <h5 class="card-title mb-0">
               <i class="bi bi-funnel"></i> Фильтры данных
+              <span class="badge bg-primary ms-2">{{ filteredMeasurements.length }}/{{ measurements.length }}</span>
             </h5>
             <div>
-              <button class="btn btn-sm btn-outline-secondary me-2" @click="resetFilters">
+              <button class="btn btn-sm btn-outline-secondary me-2" @click="resetAllFilters">
                 <i class="bi bi-arrow-counterclockwise"></i> Сбросить все
               </button>
               <button class="btn btn-sm btn-primary" @click="applyFilters">
@@ -214,8 +350,13 @@
             <div v-if="filters.mapSelection" class="alert alert-warning d-flex justify-content-between align-items-center mb-3">
               <div>
                 <i class="bi bi-geo-alt"></i> Активен фильтр по карте: 
-                радиус {{ filters.mapSelection.radius }}м вокруг 
-                [{{ filters.mapSelection.lat.toFixed(6) }}, {{ filters.mapSelection.lng.toFixed(6) }}]
+                <template v-if="filters.mapSelection.type === 'circle'">
+                  радиус {{ filters.mapSelection.radius }}м вокруг 
+                  [{{ filters.mapSelection.lat.toFixed(6) }}, {{ filters.mapSelection.lng.toFixed(6) }}]
+                </template>
+                <template v-else>
+                  четырехугольник ({{ filters.mapSelection.points.length }} точек)
+                </template>
               </div>
               <button class="btn btn-sm btn-outline-danger" @click="clearMapSelection">
                 <i class="bi bi-x-circle"></i> Очистить
@@ -379,6 +520,11 @@
         </div>
       </div>
 
+      <!-- Информация о статусе авторизации -->
+      <div v-if="!isAuthenticated" class="alert alert-info mb-3">
+        <i class="bi bi-info-circle"></i> Вы вошли как гость. Для редактирования данных войдите как администратор.
+      </div>
+
       <!-- Состояния загрузки -->
       <div v-if="loading" class="text-center py-3">
         <div class="spinner-border text-primary" role="status">
@@ -388,10 +534,31 @@
       </div>
       <div v-else-if="filteredMeasurements.length === 0 && !showMap" class="alert alert-info text-center">
         <i class="bi bi-info-circle"></i> Ничего не найдено
+        <button v-if="hasActiveFilters" class="btn btn-sm btn-outline-primary ms-2" @click="resetFilters">
+          <i class="bi bi-arrow-counterclockwise"></i> Очистить фильтры
+        </button>
       </div>
 
       <!-- Таблица -->
       <div v-if="!showMap && filteredMeasurements.length > 0" class="table-container">
+        <!-- Статистика фильтрации -->
+        <div class="alert alert-light d-flex justify-content-between align-items-center mb-3">
+          <div>
+            <i class="bi bi-filter"></i>
+            <strong>Показано записей:</strong> {{ filteredMeasurements.length }} из {{ measurements.length }}
+            <span v-if="hasActiveFilters" class="text-success">
+              • Применены фильтры
+            </span>
+          </div>
+          <button 
+            v-if="hasActiveFilters" 
+            class="btn btn-sm btn-outline-secondary"
+            @click="resetRegularFilters"
+          >
+            <i class="bi bi-x-circle"></i> Сбросить фильтры
+          </button>
+        </div>
+
         <!-- Группы измерений -->
         <div v-for="(measuring, index) in filteredMeasurements" 
             :key="measuring.id" 
@@ -419,7 +586,7 @@
                   >
                     <i class="bi bi-map"></i> Карта
                   </button>
-                  <button class="btn btn-danger btn-sm" @click="onDelete(measuring.id)">
+                  <button v-if="isAdmin" class="btn btn-danger btn-sm" @click="onDelete(measuring.id)">
                     <i class="bi bi-trash"></i> Удалить все
                   </button>
                 </div>
@@ -450,7 +617,7 @@
                   </div>
                   <div class="info-item">
                     <span class="info-label"><i class="bi bi-stopwatch"></i> Длительность:</span>
-                    <span class="info-value">{{ measuring.measurment_duration }} мин</span>
+                    <span class="info-value">{{ formatDuration(measuring.measurment_duration) }}</span>
                   </div>
                   <div class="info-item">
                     <span class="info-label"><i class="bi bi-geo"></i> Координаты:</span>
@@ -493,6 +660,13 @@
                   <h6 class="section-title intensivity-title">
                     <i class="bi bi-car-front"></i> Интенсивность движения
                     <span class="badge bg-success ms-2">{{ measuring.children.filter(c => c.transport).length }}</span>
+                  <div class="intensity-micro">
+                    <span class="intensity-micro-value">
+                      <i class="bi bi-activity"></i>
+                      {{ calculateIntensity(measuring) }}
+                    </span>
+                    <small class="intensity-micro-label">ед/час</small>
+                  </div>
                   </h6>
                   <div class="compact-intensivity-grid">
                     <div v-for="child in measuring.children.filter(c => c.transport)" :key="child.id" class="compact-intensivity-item">
@@ -504,7 +678,7 @@
                         <span class="quantity-number">{{ child.quanity }}</span>
                         <small class="quantity-label">шт.</small>
                       </div>
-                      <button class="btn btn-sm btn-outline-danger btn-delete-compact" @click="onDeleteSingle(child)" title="Удалить">
+                      <button v-if="isAdmin" class="btn btn-sm btn-outline-danger btn-delete-compact" @click="onDeleteSingle(child)" title="Удалить">
                         <i class="bi bi-trash"></i>
                       </button>
                     </div>
@@ -525,7 +699,7 @@
                             <i class="bi bi-bus-front"></i>
                             {{ publicTransportsById[publicTransportsNumbersById[child.public_transport_number]?.public_transport]?.name }} 
                             {{ publicTransportsNumbersById[child.public_transport_number]?.number }}
-                            <button class="btn btn-sm btn-outline-danger btn-delete" @click="onDeleteSingle(child)" >
+                            <button v-if="isAdmin" class="btn btn-sm btn-outline-danger btn-delete" @click="onDeleteSingle(child)" >
                               <i class="bi bi-trash"></i>
                             </button>
                           </div>
@@ -566,11 +740,26 @@
 </template>
 
 <script setup>
-import { ref, onBeforeMount, computed, nextTick } from 'vue';
+import { ref, onBeforeMount, computed, nextTick, watch } from 'vue';
 import axios from 'axios';
 import _ from 'lodash';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import AdminOnly from '@/components/AdminOnly.vue'
+import { useAuthStore } from '@/stores/auth'
+
+const authStore = useAuthStore()
+const isAdmin = computed(() => authStore.isAdmin)
+const isAuthenticated = computed(() => authStore.isAuthenticated)
+
+// Добавляем watch для отладки
+watch(isAdmin, (newVal) => {
+  console.log('isAdmin changed:', newVal)
+})
+
+watch(isAuthenticated, (newVal) => {
+  console.log('isAuthenticated changed:', newVal)
+})
 
 // Fix for default markers in leaflet
 delete L.Icon.Default.prototype._getIconUrl;
@@ -580,6 +769,14 @@ L.Icon.Default.mergeOptions({
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
 });
 
+// Новые переменные для полигона
+const selectionType = ref('circle'); // 'circle' или 'polygon'
+const polygonPoints = ref([]);
+const currentPointIndex = ref(null);
+const polygonLayer = ref(null);
+const pointMarkers = ref([]);
+
+// Существующие переменные
 const measurements = ref([]);
 const filteredMeasurements = ref([]);
 const loading = ref(false);
@@ -588,14 +785,14 @@ const publicTransports = ref([]);
 const publicTransportsNumbers = ref([]);
 const users = ref([]);
 const showMap = ref(false);
-const mapMode = ref('allRoutes'); // 'allRoutes' или 'singleRoute'
+const mapMode = ref('allRoutes');
 const selectedMeasuring = ref(null);
 const routeCoordinates = ref([]);
 const map = ref(null);
 const scrollToMeasuringId = ref(null);
 const showFilters = ref(false);
-const selectionRadius = ref(100); // радиус выбора в метрах (10-300)
-const tempMapSelection = ref(null); // временный выбор на карте
+const selectionRadius = ref(100);
+const tempMapSelection = ref(null);
 const selectionCircle = ref(null);
 const selectionMarker = ref(null);
 const routePolylines = ref([]);
@@ -606,6 +803,7 @@ const IRKUTSK_CENTER = [52.294, 104.268];
 
 // Фильтры
 const filters = ref({
+  search: '', // Добавлен быстрый поиск
   measuringId: '',
   user: '',
   type: 'all',
@@ -621,14 +819,31 @@ const filters = ref({
   streetName: '',
   transportTypes: [],
   passengerTransportTypes: [],
-  mapSelection: null, // { lat, lng, radius }
-  isDeleted: 'all' // 'all', 'deleted', 'active'
+  mapSelection: null,
+  isDeleted: 'all'
 });
 
 const transportsById = computed(() => _.keyBy(transports.value, x => x.id));
 const publicTransportsById = computed(() => _.keyBy(publicTransports.value, x => x.id));
 const publicTransportsNumbersById = computed(() => _.keyBy(publicTransportsNumbers.value, x => x.id));
 const usersById = computed(() => _.keyBy(users.value, x => x.id));
+
+// Проверка активных фильтров
+const hasActiveFilters = computed(() => {
+  return filters.value.search !== '' ||
+         filters.value.measuringId !== '' ||
+         filters.value.user !== '' ||
+         filters.value.type !== 'all' ||
+         filters.value.dateRange.start !== '' ||
+         filters.value.dateRange.end !== '' ||
+         filters.value.timeRange.start !== '' ||
+         filters.value.timeRange.end !== '' ||
+         filters.value.daysOfWeek.length > 0 ||
+         filters.value.streetName !== '' ||
+         filters.value.transportTypes.length > 0 ||
+         filters.value.passengerTransportTypes.length > 0 ||
+         filters.value.isDeleted !== 'all';
+});
 
 // Функция для получения имени пользователя по ID
 const getUserDisplayName = (userId) => {
@@ -697,14 +912,15 @@ const daysOfWeekOptions = [
 // Функция для получения дня недели из даты
 const getDayOfWeek = (dateString) => {
   const date = new Date(dateString);
-  return date.getDay().toString();
+  return date.getUTCDay().toString(); // Используем UTC день недели
 };
 
+// Исправленные функции форматирования времени - убираем лишние 8 часов
 const formatDateTime = (dateString) => {
   if (!dateString) return 'Не указано';
   try {
     const date = new Date(dateString);
-    // Используем UTC компоненты для избежания автоматической корректировки
+    // Убираем лишние 8 часов - используем UTC время как есть
     return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')} ${String(date.getUTCHours()).padStart(2, '0')}:${String(date.getUTCMinutes()).padStart(2, '0')}:${String(date.getUTCSeconds()).padStart(2, '0')}`;
   } catch (error) {
     console.error('Error formatting date:', error);
@@ -716,6 +932,7 @@ const formatTime = (dateString) => {
   if (!dateString) return 'Не указано';
   try {
     const date = new Date(dateString);
+    // Убираем лишние 8 часов - используем UTC время как есть
     return `${String(date.getUTCHours()).padStart(2, '0')}:${String(date.getUTCMinutes()).padStart(2, '0')}:${String(date.getUTCSeconds()).padStart(2, '0')}`;
   } catch (error) {
     console.error('Error formatting time:', error);
@@ -731,7 +948,7 @@ const hasCoordinates = (measuring) => {
 
 // Функция для расчета расстояния между двумя точками в метрах (формула гаверсинусов)
 const calculateDistance = (lat1, lon1, lat2, lon2) => {
-  const R = 6371000; // радиус Земли в метрах
+  const R = 6371000;
   const dLat = (lat2 - lat1) * Math.PI / 180;
   const dLon = (lon2 - lon1) * Math.PI / 180;
   const a = 
@@ -772,17 +989,85 @@ const isMeasuringInRadius = (measuring, centerLat, centerLng, radius) => {
   );
 };
 
-// Получение измерений в выбранной области
-const getMeasurementsInSelection = () => {
-  if (!filters.value.mapSelection) {
-    return measurements.value;
+// Функция для проверки нахождения в полигоне
+const isMeasuringInPolygon = (measuring, polygonPoints) => {
+  const points = [];
+  
+  if (measuring.latitude_start && measuring.longtiude_start) {
+    points.push({
+      lat: parseFloat(measuring.latitude_start),
+      lng: parseFloat(measuring.longtiude_start)
+    });
   }
   
-  const { lat, lng, radius } = filters.value.mapSelection;
-  return measurements.value.filter(measuring => 
-    isMeasuringInRadius(measuring, lat, lng, radius)
+  if (measuring.latitude_position && measuring.longtiude_position) {
+    points.push({
+      lat: parseFloat(measuring.latitude_position),
+      lng: parseFloat(measuring.longtiude_position)
+    });
+  }
+  
+  if (measuring.latitude_end && measuring.longtiude_end) {
+    points.push({
+      lat: parseFloat(measuring.latitude_end),
+      lng: parseFloat(measuring.longtiude_end)
+    });
+  }
+  
+  return points.some(point => 
+    isPointInPolygon(point, polygonPoints)
   );
 };
+
+// Алгоритм проверки точки в полигоне (ray casting)
+const isPointInPolygon = (point, polygon) => {
+  const x = point.lat;
+  const y = point.lng;
+  let inside = false;
+  
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const xi = polygon[i].lat, yi = polygon[i].lng;
+    const xj = polygon[j].lat, yj = polygon[j].lng;
+    
+    const intersect = ((yi > y) !== (yj > y))
+        && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+    
+    if (intersect) inside = !inside;
+  }
+  
+  return inside;
+};
+
+// Общая функция проверки нахождения в области
+const isMeasuringInArea = (measuring, area) => {
+  if (!area) return false;
+  
+  if (area.type === 'circle') {
+    return isMeasuringInRadius(measuring, area.lat, area.lng, area.radius);
+  } else if (area.type === 'polygon' && area.points.length === 4) {
+    return isMeasuringInPolygon(measuring, area.points);
+  }
+  
+  return false;
+};
+
+// Получение измерений для отображения на карте
+const getMeasurementsForMap = computed(() => {
+  // Если есть активные фильтры (кроме карты), используем отфильтрованные измерения
+  if (hasActiveFilters.value && !filters.value.mapSelection) {
+    return filteredMeasurements.value;
+  }
+  // Если выбран фильтр по карте, используем измерения из выбранной области
+  else if (filters.value.mapSelection) {
+    return measurements.value.filter(measuring => 
+      isMeasuringInArea(measuring, filters.value.mapSelection)
+    );
+  }
+  // Если нет фильтров, используем все измерения
+  else {
+    return measurements.value;
+  }
+});
 
 // Получение измерений во временной выбранной области
 const getTempSelectionMeasurements = () => {
@@ -790,35 +1075,84 @@ const getTempSelectionMeasurements = () => {
     return [];
   }
   
-  const { lat, lng, radius } = tempMapSelection.value;
+  // Применяем текущие фильтры к выбранной области
+  let filtered = measurements.value.filter(measuring => 
+    isMeasuringInArea(measuring, tempMapSelection.value)
+  );
+  
+  // Применяем остальные фильтры
+  return applyOtherFilters(filtered);
+};
+
+const getMeasurementsInSelection = () => {
+  if (!filters.value.mapSelection) {
+    return [];
+  }
+  
   return measurements.value.filter(measuring => 
-    isMeasuringInRadius(measuring, lat, lng, radius)
+    isMeasuringInArea(measuring, filters.value.mapSelection)
   );
 };
 
-// Основная функция применения фильтров
-const applyFilters = () => {
-  let filtered = measurements.value;
+// Вспомогательная функция для преобразования времени в минуты
+const timeToMinutes = (timeStr) => {
+  if (!timeStr) return 0;
+  
+  try {
+    const [hours, minutes] = timeStr.split(':').map(Number);
+    
+    // Проверяем валидность времени
+    if (isNaN(hours) || isNaN(minutes) || hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
+      console.warn(`Invalid time format: ${timeStr}`);
+      return 0;
+    }
+    
+    return hours * 60 + minutes;
+  } catch (error) {
+    console.error('Error converting time to minutes:', error, 'Time string:', timeStr);
+    return 0;
+  }
+};
 
-  // Фильтр по статусу удаления
-  if (filters.value.isDeleted !== 'all') {
-    filtered = filtered.filter(measuring => {
+// Функция для применения всех фильтров кроме карты
+const applyOtherFilters = (data) => {
+  console.log('Applying filters:', {
+    timeRange: filters.value.timeRange,
+    dateRange: filters.value.dateRange,
+    search: filters.value.search,
+    measuringId: filters.value.measuringId
+  });
+  
+  return data.filter(measuring => {
+    console.log(`Checking measurement ${measuring.id} at ${measuring.measurment_time}`);
+    
+    // Быстрый поиск по всем полям
+    if (filters.value.search) {
+      const searchTerm = filters.value.search.toLowerCase();
+      const id = measuring.id?.toString() || '';
+      const userName = getUserDisplayName(measuring.user)?.toLowerCase() || '';
+      const streetName = measuring.street_name?.toLowerCase() || '';
+      const roadWidth = measuring.road_width?.toString() || '';
+      const duration = measuring.measurment_duration?.toString() || '';
+      
+      const hasMatch = id.includes(searchTerm) ||
+                      userName.includes(searchTerm) ||
+                      streetName.includes(searchTerm) ||
+                      roadWidth.includes(searchTerm) ||
+                      duration.includes(searchTerm);
+      
+      if (!hasMatch) return false;
+    }
+
+    // Фильтр по статусу удаления
+    if (filters.value.isDeleted !== 'all') {
       if (filters.value.isDeleted === 'deleted') {
-        return measuring.is_deleated == 1;
+        if (measuring.is_deleated != 1) return false;
       } else if (filters.value.isDeleted === 'active') {
-        return measuring.is_deleated != 1;
+        if (measuring.is_deleated == 1) return false;
       }
-      return true;
-    });
-  }
+    }
 
-  // Фильтр по карте
-  if (filters.value.mapSelection) {
-    filtered = getMeasurementsInSelection();
-  }
-
-  // Остальные фильтры
-  filtered = filtered.filter(measuring => {
     // Фильтр по ID измерения
     if (filters.value.measuringId && !measuring.id.toString().includes(filters.value.measuringId)) {
       return false;
@@ -838,26 +1172,57 @@ const applyFilters = () => {
       }
     }
     
-    // Остальные фильтры
+    // ФИЛЬТРЫ ПО ДАТЕ - используем UTC время для фильтрации
     if (filters.value.dateRange.start || filters.value.dateRange.end) {
       const measuringDate = new Date(measuring.measurment_time);
-      const startDate = filters.value.dateRange.start ? new Date(filters.value.dateRange.start) : null;
-      const endDate = filters.value.dateRange.end ? new Date(filters.value.dateRange.end + 'T23:59:59') : null;
       
-      if (startDate && measuringDate < startDate) return false;
-      if (endDate && measuringDate > endDate) return false;
+      // Получаем компоненты даты в UTC времени
+      const measuringYear = measuringDate.getUTCFullYear();
+      const measuringMonth = measuringDate.getUTCMonth();
+      const measuringDay = measuringDate.getUTCDate();
+      
+      // Создаем дату измерения без времени для сравнения в UTC
+      const measuringDateOnly = new Date(Date.UTC(measuringYear, measuringMonth, measuringDay));
+      
+      // Обрабатываем фильтры дат в UTC
+      let startDate = null;
+      let endDate = null;
+      
+      if (filters.value.dateRange.start) {
+        const [startYear, startMonth, startDay] = filters.value.dateRange.start.split('-').map(Number);
+        startDate = new Date(Date.UTC(startYear, startMonth - 1, startDay));
+      }
+      
+      if (filters.value.dateRange.end) {
+        const [endYear, endMonth, endDay] = filters.value.dateRange.end.split('-').map(Number);
+        endDate = new Date(Date.UTC(endYear, endMonth - 1, endDay, 23, 59, 59, 999)); // Конец дня в UTC
+      }
+      
+      console.log(`Date filter: Measuring ${measuringDateOnly.toISOString()}, Range: ${startDate?.toISOString()} - ${endDate?.toISOString()}`);
+      
+      if (startDate && measuringDateOnly < startDate) return false;
+      if (endDate && measuringDateOnly > endDate) return false;
     }
     
+    // ФИЛЬТРЫ ПО ВРЕМЕНИ - используем UTC время для фильтрации
     if (filters.value.timeRange.start || filters.value.timeRange.end) {
       const measuringTime = new Date(measuring.measurment_time);
-      const hours = measuringTime.getHours();
-      const minutes = measuringTime.getMinutes();
-      const totalMinutes = hours * 60 + minutes;
       
-      const startTime = filters.value.timeRange.start ? timeToMinutes(filters.value.timeRange.start) : 0;
-      const endTime = filters.value.timeRange.end ? timeToMinutes(filters.value.timeRange.end) : 1439;
+      // Получаем UTC время (оригинальное время из базы)
+      const utcHours = measuringTime.getUTCHours();
+      const utcMinutes = measuringTime.getUTCMinutes();
+      const measuringTotalMinutes = utcHours * 60 + utcMinutes;
       
-      if (totalMinutes < startTime || totalMinutes > endTime) return false;
+      // Преобразуем фильтры времени в минуты
+      const startTimeMinutes = filters.value.timeRange.start ? timeToMinutes(filters.value.timeRange.start) : 0;
+      const endTimeMinutes = filters.value.timeRange.end ? timeToMinutes(filters.value.timeRange.end) : 1439; // 23:59
+      
+      console.log(`Time filter: UTC ${utcHours}:${utcMinutes} (${measuringTotalMinutes}min), Range: ${startTimeMinutes}-${endTimeMinutes}min`);
+      
+      if (measuringTotalMinutes < startTimeMinutes || measuringTotalMinutes > endTimeMinutes) {
+        console.log(`Skipping measurement ${measuring.id} - time out of range`);
+        return false;
+      }
     }
     
     if (filters.value.daysOfWeek.length > 0) {
@@ -904,18 +1269,30 @@ const applyFilters = () => {
     
     return true;
   });
+};
+
+// Основная функция применения фильтров
+const applyFilters = () => {
+  let filtered = measurements.value;
+
+  // Сначала применяем фильтр по карте (если есть)
+  if (filters.value.mapSelection) {
+    filtered = filtered.filter(measuring => 
+      isMeasuringInArea(measuring, filters.value.mapSelection)
+    );
+  }
+
+  // Затем применяем остальные фильтры
+  filtered = applyOtherFilters(filtered);
 
   filteredMeasurements.value = filtered;
 };
 
-// Вспомогательная функция для преобразования времени в минуты
-const timeToMinutes = (timeStr) => {
-  const [hours, minutes] = timeStr.split(':').map(Number);
-  return hours * 60 + minutes;
-};
-
 const resetFilters = () => {
+  console.log('Resetting filters...');
+  
   filters.value = {
+    search: '',
     measuringId: '',
     user: '',
     type: 'all',
@@ -928,8 +1305,15 @@ const resetFilters = () => {
     mapSelection: null,
     isDeleted: 'all'
   };
-  clearMapSelection();
+  
+  // Безопасная очистка временного выбора
+  tempMapSelection.value = null;
+  polygonPoints.value = [];
+  
+  // Применяем фильтры (покажет все записи)
   filteredMeasurements.value = [...measurements.value];
+  
+  console.log('Filters reset successfully');
 };
 
 // Функции для работы с чекбоксами
@@ -962,26 +1346,122 @@ const togglePassengerTransportType = (transportId) => {
   }
 };
 
-// Получение статистики по отфильтрованным данным
-const filteredStats = computed(() => {
-  const stats = {
-    totalMeasurements: filteredMeasurements.value.length,
-    totalIntensivity: 0,
-    totalPassengers: 0,
-    withCoordinates: 0
-  };
-  
-  filteredMeasurements.value.forEach(measuring => {
-    stats.totalIntensivity += measuring.children.filter(c => c.transport).length;
-    stats.totalPassengers += measuring.children.filter(c => !c.transport).length;
+// Функции для работы с полигоном
+const setSelectionType = (type) => {
+  selectionType.value = type;
+  clearTempSelection();
+  polygonPoints.value = [];
+};
+
+const addPolygonPoint = (lat, lng) => {
+  if (polygonPoints.value.length < 4) {
+    polygonPoints.value.push({ lat, lng });
+    updatePolygonOnMap();
     
-    if (hasCoordinates(measuring)) {
-      stats.withCoordinates++;
+    if (polygonPoints.value.length === 4) {
+      // Автоматически создаем временный выбор когда есть 4 точки
+      tempMapSelection.value = {
+        type: 'polygon',
+        points: [...polygonPoints.value]
+      };
+    }
+  }
+};
+
+const removePolygonPoint = (index) => {
+  polygonPoints.value.splice(index, 1);
+  updatePolygonOnMap();
+  currentPointIndex.value = null;
+  
+  // Сбрасываем временный выбор если точек меньше 4
+  if (polygonPoints.value.length < 4) {
+    tempMapSelection.value = null;
+  }
+};
+
+const clearPolygonPoints = () => {
+  polygonPoints.value = [];
+  currentPointIndex.value = null;
+  tempMapSelection.value = null;
+  updatePolygonOnMap();
+};
+
+const focusOnPoint = (index) => {
+  currentPointIndex.value = index;
+  const point = polygonPoints.value[index];
+  map.value.setView([point.lat, point.lng], map.value.getZoom());
+};
+
+const updatePolygonOnMap = () => {
+  // Удаляем старый полигон
+  if (polygonLayer.value) {
+    map.value.removeLayer(polygonLayer.value);
+    polygonLayer.value = null;
+  }
+  
+  // Удаляем старые маркеры точек
+  pointMarkers.value.forEach(marker => {
+    if (map.value && marker) {
+      map.value.removeLayer(marker);
     }
   });
+  pointMarkers.value = [];
   
-  return stats;
-});
+  // Рисуем новый полигон если есть достаточно точек
+  if (polygonPoints.value.length >= 2) {
+    const latLngs = polygonPoints.value.map(point => [point.lat, point.lng]);
+    
+    // Замыкаем полигон если есть 4 точки
+    if (polygonPoints.value.length === 4) {
+      latLngs.push([polygonPoints.value[0].lat, polygonPoints.value[0].lng]);
+    }
+    
+    polygonLayer.value = L.polygon(latLngs, {
+      color: '#0d6efd',
+      fillColor: '#0d6efd',
+      fillOpacity: 0.1,
+      weight: 2
+    }).addTo(map.value);
+  }
+  
+  // Рисуем маркеры точек
+  polygonPoints.value.forEach((point, index) => {
+    const customIcon = L.divIcon({
+      className: 'custom-marker',
+      html: `
+        <div style="background-color: #0d6efd; 
+                    width: 20px; 
+                    height: 20px; 
+                    border-radius: 50%; 
+                    border: 3px solid white;
+                    display: flex; 
+                    align-items: center; 
+                    justify-content: center;
+                    color: white;
+                    font-weight: bold;
+                    font-size: 10px;
+                    box-shadow: 0 2px 5px rgba(0,0,0,0.3);">
+          ${index + 1}
+        </div>
+      `,
+      iconSize: [26, 26],
+      iconAnchor: [13, 13]
+    });
+
+    const marker = L.marker([point.lat, point.lng], { icon: customIcon })
+      .addTo(map.value)
+      .bindPopup(`
+        <strong>Точка ${index + 1}</strong><br>
+        Ш: ${point.lat.toFixed(6)}<br>
+        Д: ${point.lng.toFixed(6)}<br>
+        <button onclick="window.vm.removePolygonPoint(${index})" class="btn btn-sm btn-outline-danger mt-1">
+          <i class="bi bi-trash"></i> Удалить
+        </button>
+      `);
+
+    pointMarkers.value.push(marker);
+  });
+};
 
 // Функции для работы с картой
 const initMap = () => {
@@ -993,7 +1473,6 @@ const initMap = () => {
     map.value = null;
   }
 
-  // Устанавливаем центр на Иркутск
   map.value = L.map(mapContainer).setView(IRKUTSK_CENTER, 13);
   
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -1002,32 +1481,64 @@ const initMap = () => {
 
   if (mapMode.value === 'allRoutes') {
     drawAllRoutes();
-    // Добавляем обработчик клика по карте
     map.value.on('click', onMapClick);
+    
+    // Восстанавливаем выбранную область если есть
+    if (filters.value.mapSelection) {
+      if (filters.value.mapSelection.type === 'circle') {
+        selectionType.value = 'circle';
+        drawSelectionCircle(
+          filters.value.mapSelection.lat,
+          filters.value.mapSelection.lng,
+          filters.value.mapSelection.radius
+        );
+      } else {
+        selectionType.value = 'polygon';
+        polygonPoints.value = [...filters.value.mapSelection.points];
+        updatePolygonOnMap();
+      }
+    }
   } else if (mapMode.value === 'singleRoute') {
     drawSingleRoute(routeCoordinates.value, selectedMeasuring.value);
   }
+};
+
+// Обработчик клика по карте
+const onMapClick = (e) => {
+  const { lat, lng } = e.latlng;
+  
+  if (selectionType.value === 'circle') {
+    tempMapSelection.value = {
+      type: 'circle',
+      lat,
+      lng,
+      radius: selectionRadius.value
+    };
+    drawSelectionCircle(lat, lng, selectionRadius.value);
+  } else {
+    addPolygonPoint(lat, lng);
+  }
+  
+  redrawRoutesWithSelection();
 };
 
 // Отрисовка всех путей измерений
 const drawAllRoutes = () => {
   if (!map.value) return;
 
-  // Очищаем предыдущие маршруты и маркеры
   clearRoutesAndMarkers();
 
-  // Отрисовываем пути для всех измерений с координатами
-  measurements.value.forEach(measuring => {
+  // Используем измерения для карты (учитывая фильтры)
+  const measurementsToDraw = getMeasurementsForMap.value;
+
+  measurementsToDraw.forEach(measuring => {
     if (hasCoordinates(measuring)) {
       const coordinates = getCoordinatesFromMeasuring(measuring);
       if (coordinates.length >= 2) {
         const isInSelection = tempMapSelection.value ? 
-          isMeasuringInRadius(measuring, tempMapSelection.value.lat, tempMapSelection.value.lng, tempMapSelection.value.radius) :
-          (filters.value.mapSelection ? 
-            isMeasuringInRadius(measuring, filters.value.mapSelection.lat, filters.value.mapSelection.lng, filters.value.mapSelection.radius) : 
-            false);
+          isMeasuringInArea(measuring, tempMapSelection.value) :
+          false;
         
-        // Создаем полилинию с более заметными параметрами
         const polyline = L.polyline(coordinates, {
           color: isInSelection ? '#ff4444' : '#0066cc',
           weight: isInSelection ? 6 : 4,
@@ -1038,21 +1549,21 @@ const drawAllRoutes = () => {
 
         routePolylines.value.push(polyline);
 
-        // Добавляем маркеры для точек начала, позиции и конца
+        // Добавляем маркеры
         coordinates.forEach((coord, index) => {
           let markerColor, markerText;
           
           if (index === 0) {
-            markerColor = '#28a745'; // зеленый для старта
+            markerColor = '#28a745';
             markerText = 'Старт';
           } else if (index === 1 && coordinates.length === 3) {
-            markerColor = '#fd7e14'; // оранжевый для позиции
+            markerColor = '#fd7e14';
             markerText = 'Позиция';
           } else if (index === coordinates.length - 1) {
-            markerColor = '#dc3545'; // красный для конца
+            markerColor = '#dc3545';
             markerText = 'Конец';
           } else {
-            markerColor = '#007bff'; // синий для промежуточных
+            markerColor = '#007bff';
             markerText = 'Точка';
           }
 
@@ -1100,7 +1611,6 @@ const drawAllRoutes = () => {
           routeMarkers.value.push(marker);
         });
 
-        // Добавляем всплывающую подсказку на линию
         polyline.bindPopup(`
           <strong>Измерение ${measuring.id}</strong><br>
           Пользователь: ${getUserDisplayName(measuring.user)}<br>
@@ -1114,13 +1624,19 @@ const drawAllRoutes = () => {
     }
   });
 
-  // Если есть выделение на карте, рисуем круг
+  // Восстанавливаем временный выбор если есть
   if (tempMapSelection.value) {
-    const { lat, lng, radius } = tempMapSelection.value;
-    drawSelectionCircle(lat, lng, radius);
+    if (tempMapSelection.value.type === 'circle') {
+      const { lat, lng, radius } = tempMapSelection.value;
+      drawSelectionCircle(lat, lng, radius);
+    } else if (tempMapSelection.value.type === 'polygon') {
+      updatePolygonOnMap();
+    }
   } else if (filters.value.mapSelection) {
-    const { lat, lng, radius } = filters.value.mapSelection;
-    drawSelectionCircle(lat, lng, radius);
+    if (filters.value.mapSelection.type === 'circle') {
+      const { lat, lng, radius } = filters.value.mapSelection;
+      drawSelectionCircle(lat, lng, radius);
+    }
   }
 };
 
@@ -1141,24 +1657,6 @@ const clearRoutesAndMarkers = () => {
   routeMarkers.value = [];
 };
 
-// Обработчик клика по карте
-const onMapClick = (e) => {
-  const { lat, lng } = e.latlng;
-  
-  // Устанавливаем временный выбор
-  tempMapSelection.value = {
-    lat,
-    lng,
-    radius: selectionRadius.value
-  };
-  
-  // Рисуем круг выбора
-  drawSelectionCircle(lat, lng, selectionRadius.value);
-  
-  // Перерисовываем маршруты с новыми цветами
-  redrawRoutesWithSelection();
-};
-
 // Перерисовка маршрутов с учетом выбора
 const redrawRoutesWithSelection = () => {
   if (mapMode.value === 'allRoutes') {
@@ -1168,7 +1666,6 @@ const redrawRoutesWithSelection = () => {
 
 // Отрисовка круга выбора
 const drawSelectionCircle = (lat, lng, radius) => {
-  // Удаляем предыдущий круг и маркер
   if (selectionCircle.value) {
     map.value.removeLayer(selectionCircle.value);
   }
@@ -1176,7 +1673,6 @@ const drawSelectionCircle = (lat, lng, radius) => {
     map.value.removeLayer(selectionMarker.value);
   }
 
-  // Рисуем круг
   selectionCircle.value = L.circle([lat, lng], {
     color: '#dc3545',
     fillColor: '#dc3545',
@@ -1185,23 +1681,21 @@ const drawSelectionCircle = (lat, lng, radius) => {
     radius: radius
   }).addTo(map.value);
 
-  // Добавляем маркер в центр
   selectionMarker.value = L.marker([lat, lng]).addTo(map.value)
     .bindPopup(`
       <strong>Центр выбора</strong><br>
       Широта: ${lat.toFixed(6)}<br>
       Долгота: ${lng.toFixed(6)}<br>
       Радиус: ${radius} м<br>
-      Измерений в области: ${tempMapSelection.value ? getTempSelectionMeasurements().length : getMeasurementsInSelection().length}
+      Измерений в области: ${tempMapSelection.value ? getTempSelectionMeasurements().length : getMeasurementsForMap.value.length}
     `);
 
-  // Центрируем карту на выбранной точке
   map.value.setView([lat, lng], map.value.getZoom());
 };
 
 // Обновление радиуса временного выбора
 const updateTempSelectionRadius = () => {
-  if (tempMapSelection.value) {
+  if (tempMapSelection.value && tempMapSelection.value.type === 'circle') {
     tempMapSelection.value.radius = selectionRadius.value;
     drawSelectionCircle(
       tempMapSelection.value.lat,
@@ -1217,6 +1711,7 @@ const applyTempSelection = () => {
   if (tempMapSelection.value) {
     filters.value.mapSelection = { ...tempMapSelection.value };
     tempMapSelection.value = null;
+    polygonPoints.value = [];
     applyFilters();
     hideMap();
   }
@@ -1225,35 +1720,91 @@ const applyTempSelection = () => {
 // Очистка временного выбора
 const clearTempSelection = () => {
   tempMapSelection.value = null;
-  if (selectionCircle.value) {
-    map.value.removeLayer(selectionCircle.value);
-    selectionCircle.value = null;
+  polygonPoints.value = [];
+  currentPointIndex.value = null;
+  
+  if (map.value) {
+    if (selectionCircle.value) {
+      map.value.removeLayer(selectionCircle.value);
+      selectionCircle.value = null;
+    }
+    if (selectionMarker.value) {
+      map.value.removeLayer(selectionMarker.value);
+      selectionMarker.value = null;
+    }
+    if (polygonLayer.value) {
+      map.value.removeLayer(polygonLayer.value);
+      polygonLayer.value = null;
+    }
   }
-  if (selectionMarker.value) {
-    map.value.removeLayer(selectionMarker.value);
-    selectionMarker.value = null;
-  }
+  
+  pointMarkers.value.forEach(marker => {
+    if (map.value && marker) {
+      map.value.removeLayer(marker);
+    }
+  });
+  pointMarkers.value = [];
+  
   redrawRoutesWithSelection();
 };
 
 // Очистка выбора на карте
 const clearMapSelection = () => {
   filters.value.mapSelection = null;
-  tempMapSelection.value = null;
-  
-  if (selectionCircle.value) {
-    map.value.removeLayer(selectionCircle.value);
-    selectionCircle.value = null;
-  }
-  if (selectionMarker.value) {
-    map.value.removeLayer(selectionMarker.value);
-    selectionMarker.value = null;
-  }
-  
+  clearTempSelection();
   applyFilters();
-  if (map.value && mapMode.value === 'allRoutes') {
-    redrawRoutesWithSelection();
-  }
+};
+
+const resetAllFilters = () => {
+  console.log('Resetting all filters...');
+  
+  filters.value = {
+    search: '',
+    measuringId: '',
+    user: '',
+    type: 'all',
+    dateRange: { start: '', end: '' },
+    timeRange: { start: '', end: '' },
+    daysOfWeek: [],
+    streetName: '',
+    transportTypes: [],
+    passengerTransportTypes: [],
+    mapSelection: null, // очищаем и фильтр карты
+    isDeleted: 'all'
+  };
+  
+  // Безопасная очистка временного выбора
+  tempMapSelection.value = null;
+  polygonPoints.value = [];
+  
+  // Применяем фильтры (покажет все записи)
+  filteredMeasurements.value = [...measurements.value];
+  
+  console.log('All filters reset successfully');
+};
+
+const resetRegularFilters = () => {
+  console.log('Resetting regular filters...');
+  
+  filters.value = {
+    ...filters.value, // сохраняем текущий фильтр карты
+    search: '',
+    measuringId: '',
+    user: '',
+    type: 'all',
+    dateRange: { start: '', end: '' },
+    timeRange: { start: '', end: '' },
+    daysOfWeek: [],
+    streetName: '',
+    transportTypes: [],
+    passengerTransportTypes: [],
+    isDeleted: 'all'
+  };
+  
+  // Применяем фильтры
+  applyFilters();
+  
+  console.log('Regular filters reset successfully');
 };
 
 const calculateBearing = (start, end) => {
@@ -1299,6 +1850,11 @@ const getCoordinatesFromMeasuring = (measuring) => {
 
 // Показать карту всех путей
 const showAllRoutesMap = () => {
+  // Сбрасываем выбранную область на карте
+  filters.value.mapSelection = null;
+  tempMapSelection.value = null;
+  polygonPoints.value = [];
+  
   showMap.value = true;
   mapMode.value = 'allRoutes';
   selectedMeasuring.value = null;
@@ -1333,11 +1889,10 @@ const showSingleRouteMap = (measuring) => {
   });
 };
 
-// Отрисовка одного маршрута (для детального просмотра)
+// Отрисовка одного маршрута
 const drawSingleRoute = (coordinates, measuring) => {
   if (!map.value) return;
 
-  // Очищаем карту
   map.value.eachLayer((layer) => {
     if (layer instanceof L.Polyline || layer instanceof L.Marker || (layer instanceof L.Control && !(layer instanceof L.TileLayer))) {
       map.value.removeLayer(layer);
@@ -1458,6 +2013,7 @@ const hideMap = () => {
   
   selectedMeasuring.value = null;
   routeCoordinates.value = [];
+  
   clearTempSelection();
 };
 
@@ -1542,6 +2098,49 @@ async function fetchData() {
   }
   loading.value = false;
 }
+// Новая функция для форматирования длительности
+const formatDuration = (durationInSeconds) => {
+  if (!durationInSeconds || durationInSeconds <= 0) return '0 сек';
+  
+  const minutes = Math.floor(durationInSeconds / 60);
+  const seconds = Math.round(durationInSeconds % 60);
+  
+  if (minutes === 0) {
+    return `${seconds} сек`;
+  } else if (seconds === 0) {
+    return `${minutes} мин`;
+  } else {
+    return `${minutes} мин ${seconds} сек`;
+  }
+};
+
+// Обновленная функция расчета интенсивности (для секунд)
+const calculateIntensity = (measuring) => {
+  if (!measuring.children || measuring.children.length === 0) return 0;
+  
+  const transportChildren = measuring.children.filter(child => child.transport);
+  if (transportChildren.length === 0) return 0;
+  
+  let totalWeightedCount = 0;
+  
+  transportChildren.forEach(child => {
+    const transport = transportsById.value[child.transport];
+    if (transport && transport.weight) {
+      // Используем вес из БД
+      const weight = parseFloat(transport.weight) || 1;
+      totalWeightedCount += child.quanity * weight;
+    } else {
+      totalWeightedCount += child.quanity;
+    }
+  });
+  
+  // РАСЧЕТ ИНТЕНСИВНОСТИ В СЕКУНДАХ
+  const durationInHours = measuring.measurment_duration / 3600; // переводим секунды в часы
+  const intensityPerHour = durationInHours > 0 ? totalWeightedCount / durationInHours : totalWeightedCount;
+  
+  return Math.round(intensityPerHour * 100) / 100; // округляем до 2 знаков
+};
+  
 
 async function onDelete(measuringId) {
   if (!confirm('Удалить все данные измерения?')) return;
@@ -1609,6 +2208,9 @@ const setupGlobalVM = () => {
     },
     clearMapSelection: () => {
       clearMapSelection();
+    },
+    removePolygonPoint: (index) => {
+      removePolygonPoint(index);
     }
   };
 };
@@ -1680,6 +2282,71 @@ onBeforeMount(async() => {
 
 .radius-control .form-range {
   width: 120px;
+}
+
+/* Новые стили для управления полигоном */
+.selection-type-control {
+  display: flex;
+  align-items: center;
+}
+
+.polygon-info {
+  padding: 4px 8px;
+  background: #f8f9fa;
+  border-radius: 4px;
+  border: 1px solid #dee2e6;
+}
+
+.polygon-points-list {
+  background: #f8f9fa;
+  padding: 15px;
+  border-radius: 8px;
+  border: 1px solid #dee2e6;
+}
+
+.points-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.point-item {
+  background: white;
+  padding: 10px;
+  border-radius: 6px;
+  border: 2px solid #e9ecef;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.point-item:hover {
+  border-color: #0d6efd;
+  transform: translateY(-1px);
+}
+
+.point-item.active {
+  border-color: #0d6efd;
+  background: #e7f1ff;
+}
+
+.point-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 5px;
+}
+
+.point-number {
+  font-weight: 600;
+  color: #495057;
+  font-size: 0.9rem;
+}
+
+.point-coordinates {
+  font-family: 'Courier New', monospace;
+  font-size: 0.8rem;
+  color: #6c757d;
 }
 
 .map-container {
@@ -1966,6 +2633,7 @@ onBeforeMount(async() => {
   white-space: nowrap;
 }
 
+/* Адаптивность */
 @media (max-width: 768px) {
   .info-item {
     flex-direction: column;
@@ -2007,9 +2675,49 @@ onBeforeMount(async() => {
     flex-direction: column;
     align-items: flex-start;
   }
+
+  .card-header .d-flex {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  
+  .selection-type-control,
+  .radius-control {
+    width: 100%;
+    justify-content: space-between;
+  }
+  
+  .points-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 :deep(.leaflet-control-attribution) {
   display: none !important;
+}
+.intensity-micro {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 8px;
+  padding: 2px 6px;
+  background: #f8f9fa;
+  border-radius: 4px;
+  border: 1px solid #dee2e6;
+}
+
+.intensity-micro-value {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #198754;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.intensity-micro-label {
+  font-size: 0.6rem;
+  color: #6c757d;
 }
 </style>

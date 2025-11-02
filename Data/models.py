@@ -32,7 +32,7 @@ class Measuring(models.Model):
 class Transport(models.Model):
     """Модель для типов транспорта используемых в интенсивыности"""
     name = models.CharField(max_length=255,unique=True, verbose_name="Наименование транспорта",default="Не указано")
-
+    weight = models.FloatField("Вес", null=True, blank=True)
     class Meta:
         verbose_name="Тип транспорта"
         verbose_name_plural="Типы транспорта"

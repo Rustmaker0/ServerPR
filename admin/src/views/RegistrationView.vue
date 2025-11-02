@@ -188,7 +188,7 @@
 
       <div class="row">
         <!-- Список пользователей -->
-        <div class="col-md-8">
+        <div class="col-md-9">
           <div class="card">
             <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
               <h5 class="mb-0">
@@ -221,7 +221,7 @@
                         <th>Имя</th>
                         <th>Фамилия</th>
                         <th>Статус</th>
-                        <th>Суперпользователь</th>
+                        <th>Superuser</th>
                         <th>Дата регистрации</th>
                         <th>Действия</th>
                       </tr>
@@ -281,7 +281,7 @@
         </div>
 
         <!-- Формы управления -->
-        <div class="col-md-4">
+        <div class="col-md-3">
           <!-- Форма добавления/редактирования -->
           <div class="card mb-4">
             <div class="card-header bg-info text-white">
@@ -494,10 +494,14 @@
 <script setup>
 import { ref, reactive, onMounted, computed } from 'vue'
 import axios from 'axios'
+import { useAuthStore } from '@/stores/auth'
 
-// Состояние аутентификации
-const isAuthenticated = ref(false)
-const currentUser = ref(null)
+const authStore = useAuthStore()
+
+// Состояние аутентификации из store
+const isAuthenticated = computed(() => authStore.isAuthenticated)
+const currentUser = computed(() => authStore.currentUser)
+
 const loginLoading = ref(false)
 const loginError = ref('')
 
@@ -562,19 +566,12 @@ const login = async () => {
       withCredentials: true
     })
     
-    if (response.data.user) {
-      isAuthenticated.value = true
-      currentUser.value = response.data.user
-      
-      localStorage.setItem('superuserAuth', JSON.stringify({
-        user: response.data.user,
-        token: response.data.token,
-        timestamp: Date.now()
-      }))
-      
-      axios.defaults.headers.common['Authorization'] = `Token ${response.data.token}`
-      
+    if (response.data.user && response.data.user.is_superuser) {
+      // Используем store для входа
+      authStore.login(response.data.user, response.data.token)
       fetchUsers()
+    } else {
+      loginError.value = 'Доступ разрешен только суперпользователям'
     }
   } catch (error) {
     if (error.response?.data?.error) {
@@ -587,39 +584,6 @@ const login = async () => {
   }
 }
 
-const checkAuth = async () => {
-  const savedAuth = localStorage.getItem('superuserAuth')
-  if (savedAuth) {
-    try {
-      const authData = JSON.parse(savedAuth)
-      currentUser.value = authData.user
-      
-      if (authData.token) {
-        axios.defaults.headers.common['Authorization'] = `Token ${authData.token}`
-      }
-      
-      try {
-        const response = await axios.get('/api/user/check-superuser/', {
-          withCredentials: true
-        })
-        
-        if (response.data.is_superuser) {
-          isAuthenticated.value = true
-          currentUser.value = response.data.user
-          fetchUsers()
-        } else {
-          logout()
-        }
-      } catch (error) {
-        logout()
-      }
-      
-    } catch (e) {
-      logout()
-    }
-  }
-}
-
 const logout = async () => {
   try {
     await axios.post('/api/user/logout/', {}, {
@@ -628,13 +592,8 @@ const logout = async () => {
   } catch (error) {
     console.error('Ошибка при выходе:', error)
   } finally {
-    isAuthenticated.value = false
-    currentUser.value = null
-    users.value = []
-    filteredUsers.value = []
-    localStorage.removeItem('superuserAuth')
-    delete axios.defaults.headers.common['Authorization']
-    Object.assign(loginForm, { username: '', password: '' })
+    // Используем store для выхода
+    authStore.logout()
   }
 }
 
@@ -913,21 +872,17 @@ const formatDate = (dateString) => {
 
 // Хуки
 onMounted(() => {
-  checkAuth()
+  // Проверяем авторизацию через store
+  authStore.checkAuth()
+  if (authStore.isAuthenticated) {
+    fetchUsers()
+  }
 })
 </script>
 
 <style scoped>
 .user-management-container {
   padding: 20px;
-}
-
-.login-container {
-  padding: 60px 20px;
-  min-height: 60vh;
-  display: flex;
-  align-items: center;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
 }
 
 .login-container .row {
@@ -948,7 +903,7 @@ onMounted(() => {
 }
 
 .login-container .card-header {
-  background: linear-gradient(135deg, #2c3e50 0%, #3498db 100%) !important;
+  background: linear-gradient(135deg, #1b5ea1 0%, #3498db 100%) !important;
   border-bottom: none;
   padding: 25px 20px;
 }

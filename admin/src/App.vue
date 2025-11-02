@@ -20,7 +20,7 @@
               <router-link class="nav-link" to="/PublicTransportsNumbers" active-class="active-link">Номера общественного транспорта</router-link>
             </li>
             <li class="nav-item">
-              <router-link class="nav-link" to="/register" active-class="active-link">Регистрация</router-link>
+              <router-link class="nav-link" to="/register" active-class="active-link">Администрирование</router-link>
             </li>
           </ul>
         </div>
