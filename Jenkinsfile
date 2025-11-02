@@ -147,40 +147,32 @@ pipeline {
     }
 
     stage('Build frontend (admin) & publish') {
-      when { expression { fileExists('admin/package.json') } }
-      steps {
-        sh '''
-          set -e
-          UID=$(id -u); GID=$(id -g)
+  when { expression { fileExists('admin/package.json') } }
+  steps {
+    sh '''
+      set -e
+      UID=$(id -u)
+      GID=$(id -g)
 
-          # Кэш для npm
-          docker volume create npm_cache || true
+      docker volume create npm_cache || true
 
-          # Сборка фронта (с кэшем)
-          docker run --rm -u $UID:$GID \
-            -e HOME=/tmp \
-            -v npm_cache:/tmp/.npm \
-            -v "$PWD/admin:/app" -w /app node:20 bash -lc '
-              ( [ -f package-lock.json ] && npm ci --prefer-offline --no-audit --fund=false || npm install ) \
-              && npm run build
-            '
+      # ⚙️ фикс прав доступа перед установкой
+      docker run --rm \
+        -u root \
+        -v npm_cache:/tmp/.npm \
+        bash -c "chown -R ${UID}:${GID} /tmp/.npm || true"
 
-          # Публикация строго в /opt/app/admin/dist
-          docker run --rm \
-            -v "$PWD/admin/dist:/src:ro" \
-            -v "${APP_PATH}:/dst" \
-            alpine sh -lc 'mkdir -p /dst/admin/dist && rm -rf /dst/admin/dist/* && cp -r /src/* /dst/admin/dist/'
-
-          # Права для nginx (без sudo)
-          chown -R www-data:www-data ${APP_PATH}/admin || true
-          find ${APP_PATH}/admin -type d -exec chmod 755 {} \\; || true
-          find ${APP_PATH}/admin -type f -exec chmod 644 {} \\; || true
-
-          # Очистка workspace
-          rm -rf admin/dist || true
-        '''
-      }
-    }
+      # 🚀 сборка с нормальными правами
+      docker run --rm -u $UID:$GID \
+        -e HOME=/tmp \
+        -v npm_cache:/tmp/.npm \
+        -v "$PWD/admin:/app" -w /app node:20 bash -lc '
+          npm ci --prefer-offline --no-audit --fund=false || npm install
+          npm run build
+        '
+    '''
+  }
+}
 
   }
 
