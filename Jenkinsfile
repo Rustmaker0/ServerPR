@@ -60,26 +60,27 @@ pipeline {
     }
 
     stage('Build backend Docker image') {
-      steps {
-        sh '''
-          set -e
-          echo "Disk before:"; df -h || true
+  steps {
+    sh '''
+      set -e
+      echo "Disk before:"; df -h || true
 
-          # Создаём кэш директорию, если нет
-          mkdir -p /var/lib/docker/cache || true
+      # Делаем локальный кэш каталог в /tmp Jenkins, без root-доступа
+      CACHE_DIR="${WORKSPACE}/.docker_cache"
+      mkdir -p "$CACHE_DIR"
 
-          # Используем BuildKit cache для ускорения
-          DOCKER_BUILDKIT=1 docker build \
-            --pull \
-            --network=host \
-            --cache-from type=local,src=/var/lib/docker/cache \
-            --cache-to type=local,dest=/var/lib/docker/cache,mode=max \
-            -t "${IMAGE_NAME}" .
+      echo "Using build cache at $CACHE_DIR"
 
-          docker image tag "${IMAGE_NAME}" "${IMAGE_NAME_BASE}:latest" || true
-        '''
-      }
-    }
+      DOCKER_BUILDKIT=1 docker build \
+        --pull \
+        --network=host \
+        --build-arg BUILDKIT_INLINE_CACHE=1 \
+        -t "${IMAGE_NAME}" .
+
+      docker image tag "${IMAGE_NAME}" "${IMAGE_NAME_BASE}:latest" || true
+    '''
+  }
+}
 
     stage('Stop & remove old container') {
       steps {
