@@ -911,33 +911,40 @@ const daysOfWeekOptions = [
 
 // Функция для получения дня недели из даты
 const getDayOfWeek = (dateString) => {
-  const date = new Date(dateString);
-  return date.getUTCDay().toString(); // Используем UTC день недели
+  const localDate = convertToLocalTime(dateString);
+  if (!localDate) return '0';
+  
+  return localDate.getDay().toString();
 };
 
-// Исправленные функции форматирования времени - убираем лишние 8 часов
-const formatDateTime = (dateString) => {
-  if (!dateString) return 'Не указано';
+// Функция для конвертации UTC времени в местное время (+8 UTC)
+const convertToLocalTime = (dateString) => {
+  if (!dateString) return null;
+  
   try {
     const date = new Date(dateString);
-    // Убираем лишние 8 часов - используем UTC время как есть
-    return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')} ${String(date.getUTCHours()).padStart(2, '0')}:${String(date.getUTCMinutes()).padStart(2, '0')}:${String(date.getUTCSeconds()).padStart(2, '0')}`;
+    // Добавляем 8 часов к UTC времени
+    const localTime = new Date(date.getTime() + (8 * 60 * 60 * 1000));
+    return localTime;
   } catch (error) {
-    console.error('Error formatting date:', error);
-    return 'Ошибка даты';
+    console.error('Error converting to local time:', error);
+    return null;
   }
+};
+
+// Обновленные функции форматирования
+const formatDateTime = (dateString) => {
+  const localDate = convertToLocalTime(dateString);
+  if (!localDate) return 'Не указано';
+  
+  return `${localDate.getFullYear()}-${String(localDate.getMonth() + 1).padStart(2, '0')}-${String(localDate.getDate()).padStart(2, '0')} ${String(localDate.getHours()).padStart(2, '0')}:${String(localDate.getMinutes()).padStart(2, '0')}:${String(localDate.getSeconds()).padStart(2, '0')}`;
 };
 
 const formatTime = (dateString) => {
-  if (!dateString) return 'Не указано';
-  try {
-    const date = new Date(dateString);
-    // Убираем лишние 8 часов - используем UTC время как есть
-    return `${String(date.getUTCHours()).padStart(2, '0')}:${String(date.getUTCMinutes()).padStart(2, '0')}:${String(date.getUTCSeconds()).padStart(2, '0')}`;
-  } catch (error) {
-    console.error('Error formatting time:', error);
-    return 'Ошибка времени';
-  }
+  const localDate = convertToLocalTime(dateString);
+  if (!localDate) return 'Не указано';
+  
+  return `${String(localDate.getHours()).padStart(2, '0')}:${String(localDate.getMinutes()).padStart(2, '0')}:${String(localDate.getSeconds()).padStart(2, '0')}`;
 };
 
 const hasCoordinates = (measuring) => {
@@ -1204,20 +1211,54 @@ const applyOtherFilters = (data) => {
       if (endDate && measuringDateOnly > endDate) return false;
     }
     
-    // ФИЛЬТРЫ ПО ВРЕМЕНИ - используем UTC время для фильтрации
-    if (filters.value.timeRange.start || filters.value.timeRange.end) {
-      const measuringTime = new Date(measuring.measurment_time);
+    // ФИЛЬТРЫ ПО ДАТЕ - используем местное время для фильтрации
+    if (filters.value.dateRange.start || filters.value.dateRange.end) {
+      const localDate = convertToLocalTime(measuring.measurment_time);
+      if (!localDate) return false;
       
-      // Получаем UTC время (оригинальное время из базы)
-      const utcHours = measuringTime.getUTCHours();
-      const utcMinutes = measuringTime.getUTCMinutes();
-      const measuringTotalMinutes = utcHours * 60 + utcMinutes;
+      // Получаем компоненты даты в местном времени
+      const measuringYear = localDate.getFullYear();
+      const measuringMonth = localDate.getMonth();
+      const measuringDay = localDate.getDate();
+      
+      // Создаем дату измерения без времени для сравнения
+      const measuringDateOnly = new Date(measuringYear, measuringMonth, measuringDay);
+      
+      // Обрабатываем фильтры дат
+      let startDate = null;
+      let endDate = null;
+      
+      if (filters.value.dateRange.start) {
+        const [startYear, startMonth, startDay] = filters.value.dateRange.start.split('-').map(Number);
+        startDate = new Date(startYear, startMonth - 1, startDay);
+      }
+      
+      if (filters.value.dateRange.end) {
+        const [endYear, endMonth, endDay] = filters.value.dateRange.end.split('-').map(Number);
+        endDate = new Date(endYear, endMonth - 1, endDay, 23, 59, 59, 999); // Конец дня
+      }
+      
+      console.log(`Date filter: Measuring ${measuringDateOnly.toISOString()}, Range: ${startDate?.toISOString()} - ${endDate?.toISOString()}`);
+      
+      if (startDate && measuringDateOnly < startDate) return false;
+      if (endDate && measuringDateOnly > endDate) return false;
+    }
+
+    // ФИЛЬТРЫ ПО ВРЕМЕНИ - используем местное время для фильтрации
+    if (filters.value.timeRange.start || filters.value.timeRange.end) {
+      const localDate = convertToLocalTime(measuring.measurment_time);
+      if (!localDate) return false;
+      
+      // Получаем местное время
+      const localHours = localDate.getHours();
+      const localMinutes = localDate.getMinutes();
+      const measuringTotalMinutes = localHours * 60 + localMinutes;
       
       // Преобразуем фильтры времени в минуты
       const startTimeMinutes = filters.value.timeRange.start ? timeToMinutes(filters.value.timeRange.start) : 0;
       const endTimeMinutes = filters.value.timeRange.end ? timeToMinutes(filters.value.timeRange.end) : 1439; // 23:59
       
-      console.log(`Time filter: UTC ${utcHours}:${utcMinutes} (${measuringTotalMinutes}min), Range: ${startTimeMinutes}-${endTimeMinutes}min`);
+      console.log(`Time filter: Local ${localHours}:${localMinutes} (${measuringTotalMinutes}min), Range: ${startTimeMinutes}-${endTimeMinutes}min`);
       
       if (measuringTotalMinutes < startTimeMinutes || measuringTotalMinutes > endTimeMinutes) {
         console.log(`Skipping measurement ${measuring.id} - time out of range`);
