@@ -19,7 +19,7 @@ class Measuring(models.Model):
     longtiude_start=models.FloatField("Долгота  начала участка", null=True)
     latitude_end=models.FloatField("Широта  конца участка", null=True)
     longtiude_end=models.FloatField("Долгота конца участка", null=True)
-
+    comment = models.TextField("Комментарий", blank=True, null=True, default="")
 
     class Meta:
         verbose_name="Измерение"

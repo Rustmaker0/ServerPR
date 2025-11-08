@@ -4,20 +4,20 @@ from .models import *
 @admin.register(Measuring)
 class MeasuringAdmin(admin.ModelAdmin):
     list_display = [
-        'user', 'road_photo', 'road_width', 'street_name', 'is_deleated',
+        'user', 'road_photo', 'road_width', 'street_name', 'is_deleated', 'comment',
         'latitude_position', 'longtiude_position', 'measurment_time', 'measurment_duration'
     ]
-    list_filter = ['user', 'measurment_time','is_deleated']
+    list_filter = ['user', 'measurment_time', 'is_deleated']
     search_fields = [
-         'user__username', 'latitude_position', 'longtiude_position', 'street_name',
-        'latitude_start', 'longtiude_start', 'latitude_end', 'longtiude_end'
+        'user__username', 'latitude_position', 'longtiude_position', 'street_name',
+        'latitude_start', 'longtiude_start', 'latitude_end', 'longtiude_end', 'comment'
     ]
 
     readonly_fields = []
 
     fieldsets = (
         (None, {
-            'fields': ('user', 'road_photo', 'road_width', 'street_name', 'is_deleated')
+            'fields': ('user', 'road_photo', 'road_width', 'street_name', 'is_deleated', 'comment')
         }),
         ('Location - Current', {
             'fields': ('latitude_position', 'longtiude_position'),

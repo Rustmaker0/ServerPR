@@ -609,6 +609,11 @@
                     <span class="info-label"><i class="bi bi-geo-alt"></i> Адрес:</span>
                     <span class="info-value">{{ measuring.street_name || 'Не указан' }}</span>
                   </div>
+                                    <!-- В разделе с основной информацией (рядом с другими info-item) -->
+                  <div class="info-item">
+                    <span class="info-label"><i class="bi bi-chat-left-text"></i> Комментарий:</span>
+                    <span class="info-value">{{ measuring.comment || 'Нет комментария' }}</span>
+                  </div>
                 </div>
                 <div class="col-md-6">
                   <div class="info-item">
