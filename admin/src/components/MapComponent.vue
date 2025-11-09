@@ -189,38 +189,45 @@ const drawAllRoutes = () => {
 
       // Добавляем маркеры для точек
       route.coordinates.forEach((coord, pointIndex) => {
-        let markerColor, markerText;
+        let markerColor, markerText, markerContent;
         
         if (pointIndex === 0) {
           markerColor = '#28a745'; // зеленый для старта
           markerText = 'Старт';
+          markerContent = ''; // Пустое содержимое для зеленой метки
         } else if (pointIndex === 1 && route.coordinates.length === 3) {
-          markerColor = '#fd7e14'; // оранжевый для позиции
+          markerColor = '#007bff'; // синий для позиции
           markerText = 'Позиция';
+          // Вместо цифры 2 используем ID измерения
+          markerContent = route.id ? route.id.toString() : '';
         } else if (pointIndex === route.coordinates.length - 1) {
           markerColor = '#dc3545'; // красный для конца
           markerText = 'Конец';
+          markerContent = ''; // Пустое содержимое для красной метки
         } else {
           markerColor = '#007bff'; // синий для промежуточных
           markerText = 'Точка';
+          markerContent = route.id ? route.id.toString() : '';
         }
 
         const customIcon = L.divIcon({
           className: 'custom-marker',
           html: `
             <div style="background-color: ${markerColor}; 
-                        width: 16px; 
-                        height: 16px; 
+                        width: ${pointIndex === 1 && route.coordinates.length === 3 ? '24px' : '16px'}; 
+                        height: ${pointIndex === 1 && route.coordinates.length === 3 ? '24px' : '16px'}; 
                         border-radius: 50%; 
                         border: 2px solid white;
                         display: flex; 
                         align-items: center; 
                         justify-content: center;
-                        box-shadow: 0 1px 3px rgba(0,0,0,0.3);">
+                        box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+                        ${pointIndex === 1 && route.coordinates.length === 3 ? 'font-size: 10px; color: white; font-weight: bold;' : ''}">
+              ${markerContent}
             </div>
           `,
-          iconSize: [20, 20],
-          iconAnchor: [10, 10]
+          iconSize: pointIndex === 1 && route.coordinates.length === 3 ? [28, 28] : [20, 20],
+          iconAnchor: pointIndex === 1 && route.coordinates.length === 3 ? [14, 14] : [10, 10]
         });
 
         const marker = L.marker(coord, { icon: customIcon })
@@ -228,6 +235,7 @@ const drawAllRoutes = () => {
           .bindPopup(`
             <strong>${markerText}</strong><br>
             ${route.popup || 'Маршрут'}<br>
+            ${pointIndex === 1 && route.coordinates.length === 3 ? `ID измерения: ${route.id}<br>` : ''}
             Точка ${pointIndex + 1}<br>
             Ш: ${coord[0].toFixed(6)}<br>
             Д: ${coord[1].toFixed(6)}
@@ -268,21 +276,33 @@ const drawRoute = () => {
   props.coordinates.forEach((coord, index) => {
     let markerColor = '#007bff';
     let markerText = 'Точка';
+    let markerContent = '';
     
     if (index === 0) {
       markerColor = '#28a745';
       markerText = 'Старт';
+      markerContent = ''; // Зеленая метка без текста
+    } else if (index === 1 && props.coordinates.length === 3) {
+      markerColor = '#007bff';
+      markerText = 'Позиция';
+      // Вместо цифры 2 используем ID измерения (если доступен)
+      markerContent = props.measuringId ? props.measuringId.toString() : '';
     } else if (index === props.coordinates.length - 1) {
       markerColor = '#dc3545';
       markerText = 'Конец';
+      markerContent = ''; // Красная метка без текста
+    } else {
+      markerColor = '#007bff';
+      markerText = 'Точка';
+      markerContent = (index + 1).toString();
     }
 
     const customIcon = L.divIcon({
       className: 'custom-marker',
       html: `
         <div style="background-color: ${markerColor}; 
-                    width: 20px; 
-                    height: 20px; 
+                    width: ${index === 1 && props.coordinates.length === 3 ? '24px' : '20px'}; 
+                    height: ${index === 1 && props.coordinates.length === 3 ? '24px' : '20px'}; 
                     border-radius: 50%; 
                     border: 3px solid white;
                     display: flex; 
@@ -290,19 +310,20 @@ const drawRoute = () => {
                     justify-content: center;
                     color: white;
                     font-weight: bold;
-                    font-size: 10px;
+                    font-size: ${index === 1 && props.coordinates.length === 3 ? '10px' : '10px'};
                     box-shadow: 0 2px 5px rgba(0,0,0,0.3);">
-          ${index + 1}
+          ${markerContent}
         </div>
       `,
-      iconSize: [26, 26],
-      iconAnchor: [13, 13]
+      iconSize: index === 1 && props.coordinates.length === 3 ? [30, 30] : [26, 26],
+      iconAnchor: index === 1 && props.coordinates.length === 3 ? [15, 15] : [13, 13]
     });
 
     L.marker(coord, { icon: customIcon })
       .addTo(map)
       .bindPopup(`
         <strong>${markerText} ${index + 1}</strong><br>
+        ${index === 1 && props.coordinates.length === 3 && props.measuringId ? `ID измерения: ${props.measuringId}<br>` : ''}
         Ш: ${coord[0].toFixed(6)}<br>
         Д: ${coord[1].toFixed(6)}
       `);

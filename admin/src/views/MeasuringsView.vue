@@ -549,14 +549,26 @@
             <span v-if="hasActiveFilters" class="text-success">
               • Применены фильтры
             </span>
+            <span v-if="hiddenMeasurements.length > 0" class="text-warning ms-2">
+              • Скрыто записей: {{ hiddenMeasurements.length }}
+            </span>
           </div>
-          <button 
-            v-if="hasActiveFilters" 
-            class="btn btn-sm btn-outline-secondary"
-            @click="resetRegularFilters"
-          >
-            <i class="bi bi-x-circle"></i> Сбросить фильтры
-          </button>
+          <div class="d-flex gap-2">
+            <button 
+              v-if="hasActiveFilters" 
+              class="btn btn-sm btn-outline-secondary"
+              @click="resetRegularFilters"
+            >
+              <i class="bi bi-x-circle"></i> Сбросить фильтры
+            </button>
+            <!-- Кнопки выгрузки для таблицы -->
+            <button class="btn btn-sm btn-success" @click="exportToExcel">
+              <i class="bi bi-file-earmark-excel"></i> Выгрузка в Excel
+            </button>
+            <button class="btn btn-sm btn-info" @click="exportToGeojson">
+              <i class="bi bi-file-code"></i> Выгрузка в Geojson
+            </button>
+          </div>
         </div>
 
         <!-- Группы измерений -->
@@ -585,6 +597,10 @@
                     :title="hasCoordinates(measuring) ? 'Показать маршрут на карте' : 'Нет координат для отображения'"
                   >
                     <i class="bi bi-map"></i> Карта
+                  </button>
+                  <!-- Кнопка Скрыть для каждого измерения -->
+                  <button class="btn btn-secondary btn-sm" @click="hideMeasurement(measuring.id)">
+                      <i class="bi bi-eye-slash"></i> Скрыть
                   </button>
                   <button v-if="isAdmin" class="btn btn-danger btn-sm" @click="onDelete(measuring.id)">
                     <i class="bi bi-trash"></i> Удалить все
@@ -742,6 +758,28 @@
       </div>
     </div>
   </div>
+
+  <!-- Модальное окно для ввода имени файла -->
+  <div class="modal fade" id="fileNameModal" tabindex="-1" aria-labelledby="fileNameModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="fileNameModalLabel">Введите название файла</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label for="fileName" class="form-label">Название файла</label>
+            <input type="text" class="form-control" id="fileName" v-model="exportFileName" placeholder="Введите название файла">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+          <button type="button" class="btn btn-primary" @click="confirmExport">Экспорт</button>
+        </div>
+      </div>
+    </div>
+  </div>
 </template>
 
 <script setup>
@@ -750,8 +788,11 @@ import axios from 'axios';
 import _ from 'lodash';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import * as XLSX from 'xlsx';
 import AdminOnly from '@/components/AdminOnly.vue'
 import { useAuthStore } from '@/stores/auth'
+import { Modal } from 'bootstrap';
+import html2canvas from 'html2canvas';
 
 const authStore = useAuthStore()
 const isAdmin = computed(() => authStore.isAdmin)
@@ -773,6 +814,8 @@ L.Icon.Default.mergeOptions({
   iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
 });
+// Переменная для скриншота
+const mapScreenshot = ref(null);
 
 // Новые переменные для полигона
 const selectionType = ref('circle'); // 'circle' или 'polygon'
@@ -802,6 +845,14 @@ const selectionCircle = ref(null);
 const selectionMarker = ref(null);
 const routePolylines = ref([]);
 const routeMarkers = ref([]);
+
+// Новые переменные для функциональности скрытия и экспорта
+const hiddenMeasurements = ref([]);
+const hiddenIntensivities = ref([]);
+const hiddenPassengers = ref([]);
+const exportFileName = ref('');
+const currentExportType = ref(''); // 'excel' или 'geojson'
+const fileNameModal = ref(null);
 
 // Координаты Иркутска
 const IRKUTSK_CENTER = [52.294, 104.268];
@@ -847,7 +898,10 @@ const hasActiveFilters = computed(() => {
          filters.value.streetName !== '' ||
          filters.value.transportTypes.length > 0 ||
          filters.value.passengerTransportTypes.length > 0 ||
-         filters.value.isDeleted !== 'all';
+         filters.value.isDeleted !== 'all' ||
+         hiddenMeasurements.value.length > 0 ||
+         hiddenIntensivities.value.length > 0 ||
+         hiddenPassengers.value.length > 0;
 });
 
 // Функция для получения имени пользователя по ID
@@ -1147,6 +1201,11 @@ const applyOtherFilters = (data) => {
   
   return data.filter(measuring => {
     console.log(`Checking measurement ${measuring.id} at ${measuring.measurment_time}`);
+    
+    // Фильтр по скрытым измерениям
+    if (hiddenMeasurements.value.includes(measuring.id)) {
+      return false;
+    }
     
     // Быстрый поиск по всем полям
     if (filters.value.search) {
@@ -1550,6 +1609,7 @@ const onMapClick = (e) => {
 };
 
 // Отрисовка всех путей измерений
+// Отрисовка всех путей измерений
 const drawAllRoutes = () => {
   if (!map.value) return;
 
@@ -1566,40 +1626,62 @@ const drawAllRoutes = () => {
           isMeasuringInArea(measuring, tempMapSelection.value) :
           false;
         
-        const polyline = L.polyline(coordinates, {
+        // Создаем маршрут с ID измерения
+        const routeData = {
+          id: measuring.id, // Добавляем ID измерения
+          coordinates: coordinates,
           color: isInSelection ? '#ff4444' : '#0066cc',
           weight: isInSelection ? 6 : 4,
           opacity: isInSelection ? 0.9 : 0.7,
+          popup: `
+            <strong>Измерение ${measuring.id}</strong><br>
+            Пользователь: ${getUserDisplayName(measuring.user)}<br>
+            Время: ${formatDateTime(measuring.measurment_time)}<br>
+            Точек: ${coordinates.length}<br>
+            <button onclick="window.vm.showSingleRouteMapById(${measuring.id})" class="btn btn-sm btn-primary mt-1">
+              Показать детально
+            </button>
+          `
+        };
+
+        const polyline = L.polyline(routeData.coordinates, {
+          color: routeData.color,
+          weight: routeData.weight,
+          opacity: routeData.opacity,
           lineJoin: 'round',
           lineCap: 'round'
         }).addTo(map.value);
 
         routePolylines.value.push(polyline);
 
-        // Добавляем маркеры
+        // Добавляем маркеры с обновленной логикой
         coordinates.forEach((coord, index) => {
-          let markerColor, markerText;
+          let markerColor, markerText, markerContent;
           
           if (index === 0) {
             markerColor = '#28a745';
             markerText = 'Старт';
+            markerContent = ''; // Зеленая метка без текста
           } else if (index === 1 && coordinates.length === 3) {
-            markerColor = '#fd7e14';
+            markerColor = '#007bff';
             markerText = 'Позиция';
+            markerContent = measuring.id.toString(); // ID измерения вместо цифры 2
           } else if (index === coordinates.length - 1) {
             markerColor = '#dc3545';
             markerText = 'Конец';
+            markerContent = ''; // Красная метка без текста
           } else {
             markerColor = '#007bff';
             markerText = 'Точка';
+            markerContent = (index + 1).toString();
           }
 
           const customIcon = L.divIcon({
             className: 'custom-marker',
             html: `
               <div style="background-color: ${markerColor}; 
-                          width: 20px; 
-                          height: 20px; 
+                          width: ${index === 1 && coordinates.length === 3 ? '24px' : '20px'}; 
+                          height: ${index === 1 && coordinates.length === 3 ? '24px' : '20px'}; 
                           border-radius: 50%; 
                           border: 3px solid white;
                           display: flex; 
@@ -1607,9 +1689,9 @@ const drawAllRoutes = () => {
                           justify-content: center;
                           color: white;
                           font-weight: bold;
-                          font-size: 10px;
+                          font-size: ${index === 1 && coordinates.length === 3 ? '10px' : '10px'};
                           box-shadow: 0 2px 5px rgba(0,0,0,0.3);">
-                ${index + 1}
+                ${markerContent}
               </div>
               <div style="position: absolute; top: 100%; left: 50%; transform: translateX(-50%); 
                           white-space: nowrap; background: white; padding: 2px 6px; 
@@ -1638,15 +1720,7 @@ const drawAllRoutes = () => {
           routeMarkers.value.push(marker);
         });
 
-        polyline.bindPopup(`
-          <strong>Измерение ${measuring.id}</strong><br>
-          Пользователь: ${getUserDisplayName(measuring.user)}<br>
-          Время: ${formatDateTime(measuring.measurment_time)}<br>
-          Точек: ${coordinates.length}<br>
-          <button onclick="window.vm.showSingleRouteMapById(${measuring.id})" class="btn btn-sm btn-primary mt-1">
-            Показать детально
-          </button>
-        `);
+        polyline.bindPopup(routeData.popup);
       }
     }
   });
@@ -1804,6 +1878,11 @@ const resetAllFilters = () => {
   tempMapSelection.value = null;
   polygonPoints.value = [];
   
+  // Сбрасываем скрытые измерения
+  hiddenMeasurements.value = [];
+  hiddenIntensivities.value = [];
+  hiddenPassengers.value = [];
+  
   // Применяем фильтры (покажет все записи)
   filteredMeasurements.value = [...measurements.value];
   
@@ -1826,8 +1905,16 @@ const resetRegularFilters = () => {
     transportTypes: [],
     passengerTransportTypes: [],
     isDeleted: 'all'
+    
   };
+   // Сбрасываем ВСЕ скрытые записи
+  hiddenMeasurements.value = [];
+  hiddenIntensivities.value = [];
+  hiddenPassengers.value = [];
   
+  // Безопасная очистка временного выбора
+  tempMapSelection.value = null;
+  polygonPoints.value = [];
   // Применяем фильтры
   applyFilters();
   
@@ -1938,24 +2025,32 @@ const drawSingleRoute = (coordinates, measuring) => {
   coordinates.forEach((coord, index) => {
     let markerColor = 'blue';
     let markerText = '';
+    let markerContent = '';
     
     if (index === 0) {
       markerColor = 'green';
       markerText = 'Старт';
+      markerContent = ''; // Зеленая метка без текста
     } else if (index === 1 && coordinates.length === 3) {
       markerColor = 'orange';
       markerText = 'Позиция';
+      markerContent = measuring.id.toString(); // ID измерения вместо цифры 2
     } else if (index === coordinates.length - 1) {
       markerColor = 'red';
       markerText = 'Конец';
+      markerContent = ''; // Красная метка без текста
+    } else {
+      markerColor = 'blue';
+      markerText = 'Точка';
+      markerContent = (index + 1).toString();
     }
 
     const customIcon = L.divIcon({
       className: 'custom-marker',
       html: `
         <div style="background-color: ${markerColor}; 
-                    width: 24px; 
-                    height: 24px; 
+                    width: ${index === 1 && coordinates.length === 3 ? '24px' : '24px'}; 
+                    height: ${index === 1 && coordinates.length === 3 ? '24px' : '24px'}; 
                     border-radius: 50%; 
                     border: 3px solid white;
                     display: flex; 
@@ -1963,9 +2058,9 @@ const drawSingleRoute = (coordinates, measuring) => {
                     justify-content: center;
                     color: white;
                     font-weight: bold;
-                    font-size: 12px;
+                    font-size: ${index === 1 && coordinates.length === 3 ? '10px' : '12px'};
                     box-shadow: 0 2px 4px rgba(0,0,0,0.3);">
-          ${index + 1}
+          ${markerContent}
         </div>
         <div style="position: absolute; top: 100%; left: 50%; transform: translateX(-50%); 
                     white-space: nowrap; background: white; padding: 2px 6px; 
@@ -1982,6 +2077,7 @@ const drawSingleRoute = (coordinates, measuring) => {
       .addTo(map.value)
       .bindPopup(`
         <strong>${markerText}</strong><br>
+        ${index === 1 && coordinates.length === 3 ? `ID измерения: ${measuring.id}<br>` : ''}
         Точка ${index + 1}<br>
         Ш: ${coord[0].toFixed(6)}<br>
         Д: ${coord[1].toFixed(6)}
@@ -2224,6 +2320,356 @@ async function onDeleteSingle(item) {
   }
 }
 
+// НОВЫЕ ФУНКЦИИ ДЛЯ СКРЫТИЯ И ЭКСПОРТА
+
+// Функции для скрытия элементов
+const hideMeasurement = (measuringId) => {
+  if (!hiddenMeasurements.value.includes(measuringId)) {
+    hiddenMeasurements.value.push(measuringId);
+    applyFilters();
+  }
+};
+
+const hideIntensivity = (intensivityId) => {
+  if (!hiddenIntensivities.value.includes(intensivityId)) {
+    hiddenIntensivities.value.push(intensivityId);
+    applyFilters();
+  }
+};
+
+const hidePassenger = (passengerId) => {
+  if (!hiddenPassengers.value.includes(passengerId)) {
+    hiddenPassengers.value.push(passengerId);
+    applyFilters();
+  }
+};
+
+// Функции для экспорта
+const exportToExcel = () => {
+  currentExportType.value = 'excel';
+  exportFileName.value = `measurements_${new Date().toISOString().split('T')[0]}`;
+  nextTick(() => {
+    fileNameModal.value = new Modal(document.getElementById('fileNameModal'));
+    fileNameModal.value.show();
+  });
+};
+
+const exportToGeojson = () => {
+  currentExportType.value = 'geojson';
+  exportFileName.value = `measurements_${new Date().toISOString().split('T')[0]}`;
+  nextTick(() => {
+    fileNameModal.value = new Modal(document.getElementById('fileNameModal'));
+    fileNameModal.value.show();
+  });
+};
+
+const confirmExport = () => {
+  if (!exportFileName.value.trim()) {
+    alert('Пожалуйста, введите название файла');
+    return;
+  }
+
+  if (currentExportType.value === 'excel') {
+    generateExcelFile();
+  } else if (currentExportType.value === 'geojson') {
+    generateGeojsonFile();
+  }
+
+  fileNameModal.value.hide();
+};
+
+const generateExcelFile = () => {
+  // Получаем отфильтрованные измерения для экспорта
+  const measurementsToExport = filteredMeasurements.value;
+  
+  // Собираем все уникальные типы транспорта для заголовков
+  const allTransportTypes = [...new Set(transports.value.map(t => t.name))];
+  
+  // Создаем заголовки столбцов
+  const headers = [
+    'ID измерения',
+    'Длительность замера (сек)',
+    'Время измерения',
+    'Адрес',
+    'Ширина дороги (м)',
+    'ID пользователя',
+    'Комментарий',
+    // Координаты
+    'Широта старта',
+    'Долгота старта',
+    'Широта позиции',
+    'Долгота позиции',
+    'Широта конца',
+    'Долгота конца',
+    // Новые поля интенсивности
+    'Интенсивность ТС в час (без веса)',
+    'Интенсивность ТС в час (с весом)',
+    // Динамические столбцы для типов транспорта
+    ...allTransportTypes
+  ];
+  
+  // Создаем данные для экспорта
+  const data = measurementsToExport.map(measuring => {
+    // Расчет интенсивностей
+    const intensityWithoutWeight = calculateIntensityWithoutWeight(measuring);
+    const intensityWithWeight = calculateIntensityWithWeight(measuring);
+    
+    const row = {
+      'ID измерения': measuring.id,
+      'Длительность замера (сек)': measuring.measurment_duration,
+      'Время измерения': formatDateTime(measuring.measurment_time),
+      'Адрес': measuring.street_name || '',
+      'Ширина дороги (м)': measuring.road_width,
+      'ID пользователя': measuring.user,
+      'Комментарий': measuring.comment || '',
+      'Широта старта': measuring.latitude_start || '',
+      'Долгота старта': measuring.longtiude_start || '',
+      'Широта позиции': measuring.latitude_position || '',
+      'Долгота позиции': measuring.longtiude_position || '',
+      'Широта конца': measuring.latitude_end || '',
+      'Долгота конца': measuring.longtiude_end || '',
+      'Интенсивность ТС в час (без веса)': intensityWithoutWeight,
+      'Интенсивность ТС в час (с весом)': intensityWithWeight
+    };
+    
+    // Добавляем данные по интенсивности для каждого типа транспорта
+    allTransportTypes.forEach(transportName => {
+      const transport = transports.value.find(t => t.name === transportName);
+      if (transport) {
+        const intensivityRecord = measuring.children.find(child => 
+          child.transport === transport.id && !hiddenIntensivities.value.includes(child.id)
+        );
+        row[transportName] = intensivityRecord ? intensivityRecord.quanity : '';
+      }
+    });
+    
+    return row;
+  });
+  
+  // Создаем workbook и worksheet
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.json_to_sheet([], { header: headers });
+  
+  // Добавляем данные
+  XLSX.utils.sheet_add_json(ws, data, { header: headers, skipHeader: true, origin: 'A2' });
+  
+  // Добавляем worksheet в workbook
+  XLSX.utils.book_append_sheet(wb, ws, 'Измерения');
+  
+  // Сохраняем файл
+  const fileName = `${exportFileName.value}.xlsx`;
+  XLSX.writeFile(wb, fileName);
+};
+const calculateIntensityWithoutWeight = (measuring) => {
+  if (!measuring.children || measuring.children.length === 0) return 0;
+  
+  const transportChildren = measuring.children.filter(child => 
+    child.transport && !hiddenIntensivities.value.includes(child.id)
+  );
+  if (transportChildren.length === 0) return 0;
+  
+  const totalCount = transportChildren.reduce((sum, child) => sum + child.quanity, 0);
+  
+  // Расчет интенсивности в час
+  const durationInHours = measuring.measurment_duration / 3600;
+  const intensityPerHour = durationInHours > 0 ? totalCount / durationInHours : totalCount;
+  
+  return Math.round(intensityPerHour * 100) / 100;
+};
+
+// Расчет интенсивности ТС в час с привязкой к весу
+const calculateIntensityWithWeight = (measuring) => {
+  if (!measuring.children || measuring.children.length === 0) return 0;
+  
+  const transportChildren = measuring.children.filter(child => 
+    child.transport && !hiddenIntensivities.value.includes(child.id)
+  );
+  if (transportChildren.length === 0) return 0;
+  
+  let totalWeightedCount = 0;
+  
+  transportChildren.forEach(child => {
+    const transport = transportsById.value[child.transport];
+    if (transport && transport.weight) {
+      // Используем вес из БД
+      const weight = parseFloat(transport.weight) || 1;
+      totalWeightedCount += child.quanity * weight;
+    } else {
+      totalWeightedCount += child.quanity;
+    }
+  });
+  
+  // Расчет интенсивности в час
+  const durationInHours = measuring.measurment_duration / 3600;
+  const intensityPerHour = durationInHours > 0 ? totalWeightedCount / durationInHours : totalWeightedCount;
+  
+  return Math.round(intensityPerHour * 100) / 100;
+};
+const generateGeojsonFile = () => {
+  // Получаем отфильтрованные измерения для экспорта
+  const measurementsToExport = filteredMeasurements.value;
+  
+  // Создаем структуру GeoJSON
+  const geojson = {
+    type: "FeatureCollection",
+    features: []
+  };
+
+  measurementsToExport.forEach(measuring => {
+    // Создаем LineString на основе всех доступных координат измерения
+    const coordinates = [];
+    const coordinatePoints = [];
+    
+    // Собираем все доступные координаты в правильном порядке: старт -> позиция -> конец
+    if (measuring.latitude_start && measuring.longtiude_start) {
+      const point = [
+        parseFloat(measuring.longtiude_start),
+        parseFloat(measuring.latitude_start)
+      ];
+      coordinates.push(point);
+      coordinatePoints.push({
+        type: 'start',
+        coordinates: point
+      });
+    }
+    
+    if (measuring.latitude_position && measuring.longtiude_position) {
+      const point = [
+        parseFloat(measuring.longtiude_position),
+        parseFloat(measuring.latitude_position)
+      ];
+      coordinates.push(point);
+      coordinatePoints.push({
+        type: 'position',
+        coordinates: point
+      });
+    }
+    
+    if (measuring.latitude_end && measuring.longtiude_end) {
+      const point = [
+        parseFloat(measuring.longtiude_end),
+        parseFloat(measuring.latitude_end)
+      ];
+      coordinates.push(point);
+      coordinatePoints.push({
+        type: 'end',
+        coordinates: point
+      });
+    }
+
+    // Если меньше 2 точек, не можем создать LineString - создаем точку вместо этого
+    let geometry;
+    let geometryType;
+    if (coordinates.length >= 2) {
+      geometry = {
+        type: "LineString",
+        coordinates: coordinates
+      };
+      geometryType = "LineString";
+    } else if (coordinates.length === 1) {
+      geometry = {
+        type: "Point",
+        coordinates: coordinates[0]
+      };
+      geometryType = "Point";
+    } else {
+      // Нет координат - пропускаем это измерение
+      return;
+    }
+
+    // Расчет интенсивностей
+    const intensityWithoutWeight = calculateIntensityWithoutWeight(measuring);
+    const intensityWithWeight = calculateIntensityWithWeight(measuring);
+
+    // Собираем данные по интенсивности
+    const intensivityData = {};
+    const transportChildren = measuring.children.filter(child => 
+      child.transport && !hiddenIntensivities.value.includes(child.id)
+    );
+    
+    transportChildren.forEach(child => {
+      const transport = transportsById.value[child.transport];
+      if (transport) {
+        intensivityData[transport.name] = child.quanity;
+      }
+    });
+
+    // Собираем данные по пассажиропотоку
+    const passengerData = [];
+    const passengerChildren = measuring.children.filter(child => 
+      !child.transport && !hiddenPassengers.value.includes(child.id)
+    );
+    
+    passengerChildren.forEach(child => {
+      const ptNumber = publicTransportsNumbersById.value[child.public_transport_number];
+      const transport = ptNumber ? publicTransportsById.value[ptNumber.public_transport] : null;
+      
+      passengerData.push({
+        transport_type: transport ? transport.name : 'Неизвестный транспорт',
+        transport_number: ptNumber ? ptNumber.number : 'Неизвестный номер',
+        time: formatTime(child.time),
+        sitting_place: child.sitting_place,
+        standing_place: child.standing_place,
+        entering_people: child.entering_people,
+        leaving_people: child.leaving_people
+      });
+    });
+
+    // Создаем feature для GeoJSON
+    const feature = {
+      type: "Feature",
+      geometry: geometry,
+      properties: {
+        // Основная информация об измерении
+        id: measuring.id,
+        measurement_time: formatDateTime(measuring.measurment_time),
+        duration_seconds: measuring.measurment_duration,
+        street_name: measuring.street_name || '',
+        road_width: measuring.road_width,
+        user_id: measuring.user,
+        comment: measuring.comment || '',
+        
+        // Информация о геометрии
+        geometry_type: geometryType,
+        total_points: coordinates.length,
+        coordinate_details: coordinatePoints,
+        
+        // Интенсивность движения
+        intensity_without_weight: intensityWithoutWeight,
+        intensity_with_weight: intensityWithWeight,
+        
+        // Данные по типам транспорта (интенсивность)
+        transport_intensivity: intensivityData,
+        
+        // Пассажиропоток
+        passenger_flow: passengerData,
+        total_passenger_records: passengerData.length,
+
+        // Мета-информация
+        export_timestamp: new Date().toISOString()
+      }
+    };
+
+    geojson.features.push(feature);
+  });
+
+  // Создаем и скачиваем файл
+  const geojsonString = JSON.stringify(geojson, null, 2);
+  const blob = new Blob([geojsonString], { type: 'application/geo+json' });
+  const url = URL.createObjectURL(blob);
+  
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `${exportFileName.value}.geojson`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  
+  URL.revokeObjectURL(url);
+  
+  console.log(`GeoJSON экспортирован: ${geojson.features.length} объектов`);
+};
+
 // Добавляем vm в глобальную область видимости для использования в popup
 const setupGlobalVM = () => {
   window.vm = {
@@ -2241,7 +2687,12 @@ const setupGlobalVM = () => {
     }
   };
 };
-
+const showSingleRouteMapById = (id) => {
+  const measuring = measurements.value.find(m => m.id === id);
+  if (measuring) {
+    showSingleRouteMap(measuring);
+  }
+};
 onBeforeMount(async() => {
   await fetchUsers();
   await fetchTransports();
