@@ -156,13 +156,11 @@ pipeline {
 
       docker volume create npm_cache || true
 
-      # ⚙️ фикс прав доступа перед установкой
       docker run --rm \
         -u root \
         -v npm_cache:/tmp/.npm \
         bash -c "chown -R ${UID}:${GID} /tmp/.npm || true"
 
-      # 🚀 сборка с нормальными правами
       docker run --rm -u $UID:$GID \
         -e HOME=/tmp \
         -v npm_cache:/tmp/.npm \
@@ -170,6 +168,12 @@ pipeline {
           npm ci --prefer-offline --no-audit --fund=false || npm install
           npm run build
         '
+      echo "Публикация фронтенда в /var/www/toolbox-dev.b216.ru"
+
+      docker run --rm \
+        -v "$PWD/admin/dist:/src:ro" \
+        -v "/var/www/toolbox-dev.b216.ru:/dst" \
+        alpine sh -lc 'rm -rf /dst/* && cp -r /src/* /dst/'
     '''
   }
 }
