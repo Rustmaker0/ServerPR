@@ -254,6 +254,17 @@
                               <i class="bi bi-pencil"></i>
                             </button>
                             <button 
+                              v-if="!user.is_superuser"
+                              class="btn" 
+                              :class="user.is_active ? 'btn-outline-warning' : 'btn-outline-success'"
+                              @click="toggleBlock(user)"
+                              :title="user.is_active ? 'Заблокировать' : 'Разблокировать'"
+                              :disabled="blockLoading === user.id"
+                            >
+                              <span v-if="blockLoading === user.id" class="spinner-border spinner-border-sm"></span>
+                              <i v-else :class="user.is_active ? 'bi bi-lock' : 'bi bi-unlock'"></i>
+                            </button>
+                            <button 
                               class="btn btn-outline-danger"
                               @click="confirmDelete(user)"
                               title="Удалить"
@@ -457,36 +468,58 @@
       </div>
 
       <!-- Модальное окно подтверждения удаления -->
-      <div v-if="showDeleteModal" class="modal fade show" style="display: block; background: rgba(0,0,0,0.5)">
-        <div class="modal-dialog">
-          <div class="modal-content">
-            <div class="modal-header">
-              <h5 class="modal-title">Подтверждение удаления</h5>
-              <button type="button" class="btn-close" @click="showDeleteModal = false"></button>
-            </div>
-            <div class="modal-body">
-              Вы уверены, что хотите удалить пользователя <strong>{{ userToDelete?.username }}</strong>?
-              <div v-if="userToDelete?.is_superuser" class="alert alert-warning mt-2">
-                <i class="bi bi-exclamation-triangle"></i> Внимание: это суперпользователь!
-              </div>
-            </div>
-            <div class="modal-footer">
-              <button type="button" class="btn btn-secondary" @click="showDeleteModal = false">
-                Отмена
-              </button>
-              <button 
-                type="button" 
-                class="btn btn-danger" 
-                @click="deleteUser" 
-                :disabled="deleteLoading || userToDelete?.is_superuser"
-              >
-                <span v-if="deleteLoading" class="spinner-border spinner-border-sm me-2"></span>
-                Удалить
-              </button>
-            </div>
-          </div>
+      <!-- Модальное окно подтверждения удаления -->
+<div v-if="showDeleteModal" class="modal fade show" style="display: block; background: rgba(0,0,0,0.5)">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Подтверждение удаления</h5>
+        <button type="button" class="btn-close" @click="showDeleteModal = false"></button>
+      </div>
+      <div class="modal-body">
+        <div class="alert alert-danger">
+          <i class="bi bi-exclamation-triangle"></i>
+          <strong>Внимание! Это действие нельзя отменить.</strong>
+        </div>
+        
+        <p>Вы уверены, что хотите удалить пользователя <strong>{{ userToDelete?.username }}</strong>?</p>
+        
+        <div class="alert alert-warning">
+          <i class="bi bi-info-circle"></i>
+          <strong>Важно:</strong> Все замеры, связанные с этим пользователем, также будут безвозвратно удалены.
+        </div>
+
+        <div v-if="userToDelete?.is_superuser" class="alert alert-warning mt-2">
+          <i class="bi bi-shield-exclamation"></i> Внимание: это суперпользователь!
+        </div>
+
+        <div class="mt-3">
+          <p class="text-muted small">
+            <i class="bi bi-lightbulb"></i>
+            Совет: Вместо удаления рассмотрите возможность 
+            <strong>блокировки</strong> пользователя через кнопку 
+            <i class="bi bi-lock"></i>. Это предотвратит вход в систему, 
+            но сохранит все данные.
+          </p>
         </div>
       </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" @click="showDeleteModal = false">
+          Отмена
+        </button>
+        <button 
+          type="button" 
+          class="btn btn-danger" 
+          @click="deleteUser" 
+          :disabled="deleteLoading || userToDelete?.is_superuser"
+        >
+          <span v-if="deleteLoading" class="spinner-border spinner-border-sm me-2"></span>
+          <i class="bi bi-trash"></i> Удалить
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
     </div>
   </div>
 </template>
@@ -518,6 +551,7 @@ const loading = ref(false)
 const formLoading = ref(false)
 const excelLoading = ref(false)
 const deleteLoading = ref(false)
+const blockLoading = ref(null)
 const showDeleteModal = ref(false)
 const showErrors = ref(false)
 const editingUser = ref(null)
@@ -617,7 +651,27 @@ const fetchUsers = async () => {
     loading.value = false
   }
 }
-
+const toggleBlock = async (user) => {
+  blockLoading.value = user.id
+  try {
+    // Используем PATCH запрос для обновления только поля is_active
+    const response = await axios.patch(`/api/user/${user.id}/`, {
+      is_active: !user.is_active
+    })
+    
+    const action = user.is_active ? 'заблокирован' : 'разблокирован'
+    alert(`Пользователь ${user.username} успешно ${action}`)
+    fetchUsers() // Обновляем список
+  } catch (error) {
+    if (error.response?.status === 403) {
+      logout()
+    } else {
+      alert(error.response?.data?.error || 'Ошибка при изменении статуса пользователя')
+    }
+  } finally {
+    blockLoading.value = null
+  }
+}
 // Методы фильтрации
 const applyFilters = () => {
   let filtered = users.value
@@ -721,7 +775,8 @@ const editUser = (user) => {
     last_name: user.last_name || '',
     password: '',
     password_confirm: '',
-    is_superuser: user.is_superuser
+    is_superuser: user.is_superuser,
+    is_active: user.is_active
   })
 }
 
@@ -756,8 +811,14 @@ const confirmDelete = (user) => {
 const deleteUser = async () => {
   deleteLoading.value = true
   try {
-    await axios.delete(`/api/user/${userToDelete.value.id}/`)
-    alert('Пользователь успешно удален')
+    const response = await axios.delete(`/api/user/${userToDelete.value.id}/`)
+    
+    // Показываем дополнительное предупреждение о количестве удаленных замеров
+    const warningMsg = response.data.warning ? 
+      `\n\n${response.data.warning}` : 
+      ''
+    
+    alert(response.data.message + warningMsg)
     showDeleteModal.value = false
     userToDelete.value = null
     fetchUsers()
@@ -765,7 +826,7 @@ const deleteUser = async () => {
     if (error.response?.status === 403) {
       logout()
     } else {
-      alert('Ошибка при удалении пользователя')
+      alert(error.response?.data?.error || 'Ошибка при удалении пользователя')
     }
   } finally {
     deleteLoading.value = false

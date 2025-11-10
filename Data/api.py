@@ -374,3 +374,53 @@ class UserViewset(GenericViewSet):
             return Response({
                 "message": "Пользователь не был аутентифицирован"
             }, status=status.HTTP_200_OK)
+
+    @action(url_path="toggle-block", methods=["POST"], detail=True)
+    def toggle_block(self, request, *args, **kwargs):
+        """Блокировка/разблокировка пользователя"""
+        if not request.user.is_authenticated or not request.user.is_superuser:
+            return Response({"error": "Требуются права суперпользователя"}, status=status.HTTP_403_FORBIDDEN)
+        
+        user = self.get_object()
+        
+        if user.is_superuser:
+            return Response({
+                "error": "Нельзя заблокировать суперпользователя"
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Переключаем статус активности
+        user.is_active = not user.is_active
+        user.save()
+        
+        action = "заблокирован" if not user.is_active else "разблокирован"
+        
+        return Response({
+            "message": f"Пользователь {user.username} успешно {action}",
+            "user": UserDetailSerializer(user).data
+        })
+
+    # Обновите метод destroy для добавления предупреждения
+    def destroy(self, request, *args, **kwargs):
+        if not request.user.is_authenticated or not request.user.is_superuser:
+            return Response({"error": "Требуются права суперпользователя"}, status=status.HTTP_403_FORBIDDEN)
+        
+        user = self.get_object()
+        username = user.username
+        
+        if user.is_superuser:
+            return Response({
+                "error": "Нельзя удалить суперпользователя"
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Подсчитываем количество замеров пользователя
+        measurements_count = Measuring.objects.filter(user=user).count()
+        
+        user.delete()
+        return Response({
+            "message": f"Пользователь {username} успешно удален",
+            "deleted_measurements": measurements_count,
+            "warning": f"Внимание: вместе с пользователем удалено {measurements_count} замеров"
+        }, status=status.HTTP_200_OK)
+
+
+    
