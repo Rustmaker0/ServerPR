@@ -168,11 +168,10 @@ pipeline {
           npm ci --prefer-offline --no-audit --fund=false || npm install
           npm run build
         '
-      echo "Публикация фронтенда в /var/www/toolbox-dev.b216.ru"
 
-      docker run --rm \
+       docker run --rm \
         -v "$PWD/admin/dist:/src:ro" \
-        -v "/var/www/toolbox-dev.b216.ru:/dst" \
+        -v "/opt/app/admin/dist:/dst" \
         alpine sh -lc 'rm -rf /dst/* && cp -r /src/* /dst/'
     '''
   }
