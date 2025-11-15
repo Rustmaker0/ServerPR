@@ -348,13 +348,36 @@ class UserViewset(GenericViewSet):
 
         user = authenticate(request, username=username, password=password)
         if user:
+            # Проверяем, активен ли пользователь
+            if not user.is_active:
+                return Response({
+                    "error": "Аккаунт заблокирован. Обратитесь к администратору."
+                }, status=status.HTTP_403_FORBIDDEN)
+            
             login(request, user)
             serializer = UserSerializer(user)
             token, created = Token.objects.get_or_create(user=user)
-            return Response({'token': token.key, **serializer.data})
+            return Response({
+                'token': token.key, 
+                'user': serializer.data,
+                'is_active': user.is_active  # Явно передаем статус
+            })
         else:
-            return Response({"error": "Invalid credentials"}, status=status.HTTP_401_UNAUTHORIZED)
+            return Response({"error": "Неверные учетные данные"}, status=status.HTTP_401_UNAUTHORIZED)
 
+    @action(url_path="check-status", methods=["GET"], detail=False)
+    def check_status(self, request, *args, **kwargs):
+        """Проверка статуса пользователя по токену"""
+        if not request.user.is_authenticated:
+            return Response({"error": "Пользователь не аутентифицирован"}, 
+                        status=status.HTTP_401_UNAUTHORIZED)
+        
+        serializer = UserSerializer(request.user)
+        return Response({
+            'user': serializer.data,
+            'is_active': request.user.is_active
+        })
+        
     @action(url_path="logout", methods=["POST"], detail=False)
     def logout(self, request, *args, **kwargs):
         if request.user.is_authenticated:

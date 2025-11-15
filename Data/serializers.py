@@ -64,7 +64,7 @@ class PeopleInPublicTransportSerializer(serializers.ModelSerializer):
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ['id', 'username', 'email','first_name','last_name', 'is_superuser']
+        fields = ['id', 'username', 'email','first_name','last_name', 'is_superuser', 'is_active']
 
 class UserRegistrationSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, required=True, min_length=6)
@@ -73,7 +73,7 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ['username', 'email', 'password', 'password_confirm', 'first_name', 'last_name', 'is_superuser']
+        fields = ['username', 'email', 'password', 'password_confirm', 'first_name', 'last_name', 'is_superuser', 'is_active']
 
     def validate(self, attrs):
         if attrs['password'] != attrs['password_confirm']:
