@@ -359,8 +359,13 @@ class UserViewset(GenericViewSet):
             token, created = Token.objects.get_or_create(user=user)
             return Response({
                 'token': token.key, 
-                'user': serializer.data,
-                'is_active': user.is_active  # Явно передаем статус
+                'id': user.id,
+                'username': user.username,
+                'email': user.email,
+                'first_name': user.first_name,
+                'last_name': user.last_name,
+                'is_superuser': user.is_superuser,
+                'is_active': user.is_active  # Добавляем поле is_active
             })
         else:
             return Response({"error": "Неверные учетные данные"}, status=status.HTTP_401_UNAUTHORIZED)
@@ -377,7 +382,7 @@ class UserViewset(GenericViewSet):
             'user': serializer.data,
             'is_active': request.user.is_active
         })
-        
+
     @action(url_path="logout", methods=["POST"], detail=False)
     def logout(self, request, *args, **kwargs):
         if request.user.is_authenticated:
