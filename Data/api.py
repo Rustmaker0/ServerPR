@@ -9,6 +9,7 @@ from django.shortcuts import get_object_or_404
 from rest_framework.authtoken.models import Token
 from Data.models import *
 from Data.serializers import *
+from rest_framework.authentication import TokenAuthentication
 
 from django.http import HttpResponse
 import pandas as pd
@@ -373,6 +374,18 @@ class UserViewset(GenericViewSet):
     @action(url_path="check-status", methods=["GET"], detail=False)
     def check_status(self, request, *args, **kwargs):
         """Проверка статуса пользователя по токену"""
+        # Добавляем поддержку токенной аутентификации
+        if not request.user.is_authenticated:
+            # Попробуем аутентифицировать по токену
+            token_auth = TokenAuthentication()
+            try:
+                user, token = token_auth.authenticate(request)
+                if user:
+                    request.user = user
+            except:
+                return Response({"error": "Пользователь не аутентифицирован"}, 
+                            status=status.HTTP_401_UNAUTHORIZED)
+        
         if not request.user.is_authenticated:
             return Response({"error": "Пользователь не аутентифицирован"}, 
                         status=status.HTTP_401_UNAUTHORIZED)
