@@ -561,6 +561,9 @@
             >
               <i class="bi bi-x-circle"></i> Сбросить фильтры
             </button>
+            <button class="btn btn-outline-secondary btn-sm" @click="">
+              <i class="bi bi-file-code"></i> Отчёт
+            </button>
             <!-- Кнопки выгрузки для таблицы -->
             <button class="btn btn-sm btn-success" @click="exportToExcel">
               <i class="bi bi-file-earmark-excel"></i> Выгрузка в Excel
