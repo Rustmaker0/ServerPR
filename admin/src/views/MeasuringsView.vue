@@ -1173,6 +1173,17 @@ const getMeasurementsInSelection = () => {
   );
 };
 
+// Функция для получения данных общественного транспорта по measuring id
+const getPublicTransportData = (measuringId) => {
+  const measuring = measurements.value.find(m => m.id === measuringId);
+  if (!measuring || !measuring.children) return [];
+  
+  return measuring.children.filter(child => 
+    !child.transport && // Это запись общественного транспорта
+    !hiddenPassengers.value.includes(child.id) // Не скрыта
+  );
+};
+
 // Вспомогательная функция для преобразования времени в минуты
 const timeToMinutes = (timeStr) => {
   if (!timeStr) return 0;
@@ -1612,7 +1623,6 @@ const onMapClick = (e) => {
 };
 
 // Отрисовка всех путей измерений
-// Отрисовка всех путей измерений
 const drawAllRoutes = () => {
   if (!map.value) return;
 
@@ -1631,7 +1641,7 @@ const drawAllRoutes = () => {
         
         // Создаем маршрут с ID измерения
         const routeData = {
-          id: measuring.id, // Добавляем ID измерения
+          id: measuring.id,
           coordinates: coordinates,
           color: isInSelection ? '#ff4444' : '#0066cc',
           weight: isInSelection ? 6 : 4,
@@ -1657,71 +1667,89 @@ const drawAllRoutes = () => {
 
         routePolylines.value.push(polyline);
 
-        // Добавляем маркеры с обновленной логикой
+        // ПРОСТЫЕ ТОЧКИ ВМЕСТО БОЛЬШИХ МАРКЕРОВ
         coordinates.forEach((coord, index) => {
-          let markerColor, markerText, markerContent;
+          let pointColor, pointSize;
           
           if (index === 0) {
-            markerColor = '#28a745';
-            markerText = 'Старт';
-            markerContent = ''; // Зеленая метка без текста
-          } else if (index === 1 && coordinates.length === 3) {
-            markerColor = '#007bff';
-            markerText = 'Позиция';
-            markerContent = measuring.id.toString(); // ID измерения вместо цифры 2
+            pointColor = '#28a745'; // зеленый для старта
+            pointSize = '10px';
           } else if (index === coordinates.length - 1) {
-            markerColor = '#dc3545';
-            markerText = 'Конец';
-            markerContent = ''; // Красная метка без текста
+            pointColor = '#dc3545'; // красный для конца
+            pointSize = '10px';
           } else {
-            markerColor = '#007bff';
-            markerText = 'Точка';
-            markerContent = (index + 1).toString();
+            pointColor = '#ffa500'; // оранжевый для позиции
+            pointSize = '8px';
           }
 
-          const customIcon = L.divIcon({
-            className: 'custom-marker',
+          // Простая точка без подписей
+          const pointIcon = L.divIcon({
+            className: 'simple-point',
             html: `
-              <div style="background-color: ${markerColor}; 
-                          width: ${index === 1 && coordinates.length === 3 ? '24px' : '20px'}; 
-                          height: ${index === 1 && coordinates.length === 3 ? '24px' : '20px'}; 
+              <div style="background-color: ${pointColor}; 
+                          width: ${pointSize}; 
+                          height: ${pointSize}; 
                           border-radius: 50%; 
-                          border: 3px solid white;
-                          display: flex; 
-                          align-items: center; 
-                          justify-content: center;
-                          color: white;
-                          font-weight: bold;
-                          font-size: ${index === 1 && coordinates.length === 3 ? '10px' : '10px'};
-                          box-shadow: 0 2px 5px rgba(0,0,0,0.3);">
-                ${markerContent}
-              </div>
-              <div style="position: absolute; top: 100%; left: 50%; transform: translateX(-50%); 
-                          white-space: nowrap; background: white; padding: 2px 6px; 
-                          border-radius: 3px; font-size: 10px; margin-top: 4px; 
-                          box-shadow: 0 1px 3px rgba(0,0,0,0.3); color: #333; font-weight: 500;">
-                ${markerText}
+                          border: 2px solid white;
+                          box-shadow: 0 1px 3px rgba(0,0,0,0.3);">
               </div>
             `,
-            iconSize: [30, 40],
-            iconAnchor: [15, 40]
+            iconSize: [14, 14],
+            iconAnchor: [7, 7]
           });
 
-          const marker = L.marker(coord, { icon: customIcon })
-            .addTo(map.value)
-            .bindPopup(`
-              <strong>${markerText}</strong><br>
-              Измерение ${measuring.id}<br>
-              Точка ${index + 1}<br>
-              Ш: ${coord[0].toFixed(6)}<br>
-              Д: ${coord[1].toFixed(6)}<br>
-              <button onclick="window.vm.showSingleRouteMapById(${measuring.id})" class="btn btn-sm btn-primary mt-1">
-                Показать детально
-              </button>
-            `);
+          const point = L.marker(coord, { 
+            icon: pointIcon,
+            opacity: 0.9,
+            interactive: true
+          }).addTo(map.value)
+          .bindPopup(`
+            <strong>${index === 0 ? 'Старт' : index === coordinates.length - 1 ? 'Конец' : 'Позиция'}</strong><br>
+            Измерение ${measuring.id}<br>
+            Точка ${index + 1}<br>
+            Ш: ${coord[0].toFixed(6)}<br>
+            Д: ${coord[1].toFixed(6)}
+          `);
 
-          routeMarkers.value.push(marker);
+          routeMarkers.value.push(point);
         });
+
+        // ДОБАВЛЯЕМ СТРЕЛКУ НАПРАВЛЕНИЯ НА КОНЕЦ МАРШРУТА
+        if (coordinates.length >= 2) {
+          const startPoint = coordinates[coordinates.length - 2];
+          const endPoint = coordinates[coordinates.length - 1];
+          
+          // ПРАВИЛЬНЫЙ РАСЧЕТ УГЛА ДЛЯ СТРЕЛКИ
+          const bearing = calculateBearing(startPoint, endPoint);
+          
+          const arrowIcon = L.divIcon({
+            className: 'direction-arrow',
+            html: `
+              <div style="color: #dc3545; 
+                          font-size: 16px; 
+                          font-weight: bold;
+                          text-shadow: 1px 1px 2px white;
+                          transform: rotate(${bearing}deg);
+                          display: inline-block;">
+                ➤
+              </div>
+            `,
+            iconSize: [20, 20],
+            iconAnchor: [10, 10]
+          });
+
+          const arrowMarker = L.marker(endPoint, { 
+            icon: arrowIcon,
+            interactive: true
+          }).addTo(map.value)
+          .bindPopup(`
+            <strong>Конец маршрута</strong><br>
+            Измерение ${measuring.id}<br>
+            Направление движения
+          `);
+
+          routeMarkers.value.push(arrowMarker);
+        }
 
         polyline.bindPopup(routeData.popup);
       }
@@ -1923,19 +1951,28 @@ const resetRegularFilters = () => {
   
   console.log('Regular filters reset successfully');
 };
-
+// АЛЬТЕРНАТИВНАЯ версия функции calculateBearing (используйте эту если первая не работает)
 const calculateBearing = (start, end) => {
-  const startLat = start[0] * Math.PI / 180;
   const startLng = start[1] * Math.PI / 180;
-  const endLat = end[0] * Math.PI / 180;
+  const startLat = start[0] * Math.PI / 180;
   const endLng = end[1] * Math.PI / 180;
+  const endLat = end[0] * Math.PI / 180;
 
-  const y = Math.sin(endLng - startLng) * Math.cos(endLat);
+  const dLng = endLng - startLng;
+  const y = Math.sin(dLng) * Math.cos(endLat);
   const x = Math.cos(startLat) * Math.sin(endLat) -
-          Math.sin(startLat) * Math.cos(endLat) * Math.cos(endLng - startLng);
+          Math.sin(startLat) * Math.cos(endLat) * Math.cos(dLng);
   
-  const bearing = Math.atan2(y, x) * 180 / Math.PI;
-  return (bearing + 360) % 360;
+  let bearing = Math.atan2(y, x) * 180 / Math.PI;
+  
+  // Нормализуем угол
+  bearing = (bearing + 360) % 360;
+  
+  // В Leaflet 0° указывает на восток, а нам нужно чтобы стрелка указывала направление движения
+  // Корректируем угол
+  bearing = (bearing - 90 + 360) % 360;
+  
+  return bearing;
 };
 
 const getCoordinatesFromMeasuring = (measuring) => {
@@ -2025,83 +2062,80 @@ const drawSingleRoute = (coordinates, measuring) => {
     lineJoin: 'round'
   }).addTo(map.value);
 
+  // ПРОСТЫЕ ТОЧКИ ДЛЯ ОДНОГО МАРШРУТА
   coordinates.forEach((coord, index) => {
-    let markerColor = 'blue';
-    let markerText = '';
-    let markerContent = '';
+    let pointColor, pointSize;
     
     if (index === 0) {
-      markerColor = 'green';
-      markerText = 'Старт';
-      markerContent = ''; // Зеленая метка без текста
-    } else if (index === 1 && coordinates.length === 3) {
-      markerColor = 'orange';
-      markerText = 'Позиция';
-      markerContent = measuring.id.toString(); // ID измерения вместо цифры 2
+      pointColor = '#28a745'; // зеленый для старта
+      pointSize = '12px';
     } else if (index === coordinates.length - 1) {
-      markerColor = 'red';
-      markerText = 'Конец';
-      markerContent = ''; // Красная метка без текста
+      pointColor = '#dc3545'; // красный для конца
+      pointSize = '12px';
     } else {
-      markerColor = 'blue';
-      markerText = 'Точка';
-      markerContent = (index + 1).toString();
+      pointColor = '#ffa500'; // оранжевый для позиции
+      pointSize = '10px';
     }
 
-    const customIcon = L.divIcon({
-      className: 'custom-marker',
+    const pointIcon = L.divIcon({
+      className: 'simple-point',
       html: `
-        <div style="background-color: ${markerColor}; 
-                    width: ${index === 1 && coordinates.length === 3 ? '24px' : '24px'}; 
-                    height: ${index === 1 && coordinates.length === 3 ? '24px' : '24px'}; 
+        <div style="background-color: ${pointColor}; 
+                    width: ${pointSize}; 
+                    height: ${pointSize}; 
                     border-radius: 50%; 
-                    border: 3px solid white;
-                    display: flex; 
-                    align-items: center; 
-                    justify-content: center;
-                    color: white;
-                    font-weight: bold;
-                    font-size: ${index === 1 && coordinates.length === 3 ? '10px' : '12px'};
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.3);">
-          ${markerContent}
-        </div>
-        <div style="position: absolute; top: 100%; left: 50%; transform: translateX(-50%); 
-                    white-space: nowrap; background: white; padding: 2px 6px; 
-                    border-radius: 3px; font-size: 11px; margin-top: 4px; 
+                    border: 2px solid white;
                     box-shadow: 0 1px 3px rgba(0,0,0,0.3);">
-          ${markerText}
         </div>
       `,
-      iconSize: [30, 40],
-      iconAnchor: [15, 40]
+      iconSize: [16, 16],
+      iconAnchor: [8, 8]
     });
 
-    L.marker(coord, { icon: customIcon })
-      .addTo(map.value)
-      .bindPopup(`
-        <strong>${markerText}</strong><br>
-        ${index === 1 && coordinates.length === 3 ? `ID измерения: ${measuring.id}<br>` : ''}
-        Точка ${index + 1}<br>
-        Ш: ${coord[0].toFixed(6)}<br>
-        Д: ${coord[1].toFixed(6)}
-      `);
+    L.marker(coord, { 
+      icon: pointIcon,
+      opacity: 0.9
+    }).addTo(map.value)
+    .bindPopup(`
+      <strong>${index === 0 ? 'Старт' : index === coordinates.length - 1 ? 'Конец' : 'Позиция'}</strong><br>
+      Измерение ${measuring.id}<br>
+      Точка ${index + 1}<br>
+      Ш: ${coord[0].toFixed(6)}<br>
+      Д: ${coord[1].toFixed(6)}
+    `);
   });
 
+  // СТРЕЛКА НАПРАВЛЕНИЯ ДЛЯ ОДНОГО МАРШРУТА
   if (coordinates.length >= 2) {
     const startPoint = coordinates[coordinates.length - 2];
     const endPoint = coordinates[coordinates.length - 1];
     
+    // ПРАВИЛЬНЫЙ РАСЧЕТ УГЛА ДЛЯ СТРЕЛКИ
+    const bearing = calculateBearing(startPoint, endPoint);
+    
     const arrowIcon = L.divIcon({
-      className: 'arrow-icon',
-      html: '➤',
-      iconSize: [20, 20],
-      iconAnchor: [10, 10]
+      className: 'direction-arrow',
+      html: `
+        <div style="color: #dc3545; 
+                    font-size: 18px; 
+                    font-weight: bold;
+                    text-shadow: 1px 1px 3px white;
+                    transform: rotate(${bearing}deg);
+                    display: inline-block;">
+          ➤
+        </div>
+      `,
+      iconSize: [24, 24],
+      iconAnchor: [12, 12]
     });
 
     L.marker(endPoint, { 
-      icon: arrowIcon,
-      rotationAngle: calculateBearing(startPoint, endPoint)
-    }).addTo(map.value);
+      icon: arrowIcon
+    }).addTo(map.value)
+    .bindPopup(`
+      <strong>Направление движения</strong><br>
+      Конец маршрута измерения ${measuring.id}
+    `);
   }
 
   map.value.fitBounds(polyline.getBounds());
@@ -2388,7 +2422,7 @@ const generateExcelFile = () => {
   // Собираем все уникальные типы транспорта для заголовков
   const allTransportTypes = [...new Set(transports.value.map(t => t.name))];
   
-  // Создаем заголовки столбцов
+  // Создаем заголовки столбцов для основного листа
   const headers = [
     'ID измерения',
     'Длительность замера (сек)',
@@ -2411,7 +2445,7 @@ const generateExcelFile = () => {
     ...allTransportTypes
   ];
   
-  // Создаем данные для экспорта
+  // Создаем данные для экспорта (основной лист)
   const data = measurementsToExport.map(measuring => {
     // Расчет интенсивностей
     const intensityWithoutWeight = calculateIntensityWithoutWeight(measuring);
@@ -2449,20 +2483,72 @@ const generateExcelFile = () => {
     return row;
   });
   
-  // Создаем workbook и worksheet
+  // СОЗДАЕМ ДАННЫЕ ДЛЯ ЛИСТА ОБЩЕСТВЕННОГО ТРАНСПОРТА
+  const publicTransportHeaders = [
+    'ID измерения',
+    'Время измерения',
+    'Адрес',
+    'Тип транспорта',
+    'Номер транспорта',
+    'Время записи',
+    'Сидячих мест',
+    'Стоячих мест',
+    'Вошедших пассажиров',
+    'Вышедших пассажиров',
+    'ID записи'
+  ];
+  
+  const publicTransportData = [];
+  
+  measurementsToExport.forEach(measuring => {
+    const transportRecords = getPublicTransportData(measuring.id);
+    
+    transportRecords.forEach(record => {
+      const ptNumber = publicTransportsNumbersById.value[record.public_transport_number];
+      const transport = ptNumber ? publicTransportsById.value[ptNumber.public_transport] : null;
+      
+      publicTransportData.push({
+        'ID измерения': measuring.id,
+        'Время измерения': formatDateTime(measuring.measurment_time),
+        'Адрес': measuring.street_name || '',
+        'Тип транспорта': transport ? transport.name : 'Неизвестный',
+        'Номер транспорта': ptNumber ? ptNumber.number : 'Неизвестный',
+        'Время записи': formatTime(record.time),
+        'Сидячих мест': record.sitting_place,
+        'Стоячих мест': record.standing_place,
+        'Вошедших пассажиров': record.entering_people,
+        'Вышедших пассажиров': record.leaving_people,
+        'ID записи': record.id
+      });
+    });
+  });
+  
+  // Создаем workbook и worksheets
   const wb = XLSX.utils.book_new();
-  const ws = XLSX.utils.json_to_sheet([], { header: headers });
   
-  // Добавляем данные
-  XLSX.utils.sheet_add_json(ws, data, { header: headers, skipHeader: true, origin: 'A2' });
+  // Основной лист с измерениями
+  const wsMain = XLSX.utils.json_to_sheet([], { header: headers });
+  XLSX.utils.sheet_add_json(wsMain, data, { header: headers, skipHeader: true, origin: 'A2' });
+  XLSX.utils.book_append_sheet(wb, wsMain, 'Измерения');
   
-  // Добавляем worksheet в workbook
-  XLSX.utils.book_append_sheet(wb, ws, 'Измерения');
+  // Лист с общественным транспортом (если есть данные)
+  if (publicTransportData.length > 0) {
+    const wsTransport = XLSX.utils.json_to_sheet([], { header: publicTransportHeaders });
+    XLSX.utils.sheet_add_json(wsTransport, publicTransportData, { 
+      header: publicTransportHeaders, 
+      skipHeader: true, 
+      origin: 'A2' 
+    });
+    XLSX.utils.book_append_sheet(wb, wsTransport, 'Общественный транспорт');
+  }
   
   // Сохраняем файл
   const fileName = `${exportFileName.value}.xlsx`;
   XLSX.writeFile(wb, fileName);
+  
+  console.log(`Excel экспортирован: ${data.length} измерений, ${publicTransportData.length} записей транспорта`);
 };
+
 const calculateIntensityWithoutWeight = (measuring) => {
   if (!measuring.children || measuring.children.length === 0) return 0;
   
@@ -2597,8 +2683,8 @@ const generateGeojsonFile = () => {
       }
     });
 
-    // Собираем данные по пассажиропотоку
-    const passengerData = [];
+    // ПРОСТЫЕ ДАННЫЕ ОБЩЕСТВЕННОГО ТРАНСПОРТА
+    const publicTransportData = [];
     const passengerChildren = measuring.children.filter(child => 
       !child.transport && !hiddenPassengers.value.includes(child.id)
     );
@@ -2607,15 +2693,23 @@ const generateGeojsonFile = () => {
       const ptNumber = publicTransportsNumbersById.value[child.public_transport_number];
       const transport = ptNumber ? publicTransportsById.value[ptNumber.public_transport] : null;
       
-      passengerData.push({
-        transport_type: transport ? transport.name : 'Неизвестный транспорт',
-        transport_number: ptNumber ? ptNumber.number : 'Неизвестный номер',
-        time: formatTime(child.time),
+      const transportRecord = {
+        // Основные поля из API
+        id: child.id,
         sitting_place: child.sitting_place,
         standing_place: child.standing_place,
         entering_people: child.entering_people,
-        leaving_people: child.leaving_people
-      });
+        leaving_people: child.leaving_people,
+        time: child.time,
+        measuring: child.measuring,
+        
+        // Простая информация о транспорте
+        transport_type: transport ? transport.name : 'Неизвестный транспорт',
+        transport_number: ptNumber ? ptNumber.number : 'Неизвестный номер',
+      
+      };
+      
+      publicTransportData.push(transportRecord);
     });
 
     // Создаем feature для GeoJSON
@@ -2644,9 +2738,9 @@ const generateGeojsonFile = () => {
         // Данные по типам транспорта (интенсивность)
         transport_intensivity: intensivityData,
         
-        // Пассажиропоток
-        passenger_flow: passengerData,
-        total_passenger_records: passengerData.length,
+        // ПРОСТЫЕ ДАННЫЕ ОБЩЕСТВЕННОГО ТРАНСПОРТА
+        public_transport: publicTransportData,
+        total_public_transport_records: publicTransportData.length,
 
         // Мета-информация
         export_timestamp: new Date().toISOString()
@@ -2671,6 +2765,124 @@ const generateGeojsonFile = () => {
   URL.revokeObjectURL(url);
   
   console.log(`GeoJSON экспортирован: ${geojson.features.length} объектов`);
+};
+
+// Вспомогательные функции для расчета метрик заполненности
+
+// Расчет процента заполненности
+const calculateOccupancyPercentage = (child) => {
+  const totalCapacity = child.sitting_place + child.standing_place;
+  if (totalCapacity === 0) return 0;
+  
+  // Предполагаем, что транспорт заполнен на основе вошедших пассажиров
+  // Это упрощенный расчет - в реальности нужно учитывать текущее количество пассажиров
+  const estimatedCurrentPassengers = Math.max(child.entering_people, child.leaving_people);
+  const occupancy = Math.min(estimatedCurrentPassengers / totalCapacity, 1);
+  
+  return Math.round(occupancy * 100);
+};
+
+// Расчет использования вместимости
+const calculateCapacityUtilization = (child) => {
+  const totalCapacity = child.sitting_place + child.standing_place;
+  if (totalCapacity === 0) return 0;
+  
+  const totalPassengers = child.entering_people + child.leaving_people;
+  return Math.min(totalPassengers / totalCapacity, 1);
+};
+
+// Получение статуса заполненности
+const getOccupancyStatus = (child) => {
+  const utilization = calculateCapacityUtilization(child);
+  
+  if (utilization === 0) return 'empty';
+  if (utilization < 0.3) return 'low';
+  if (utilization < 0.6) return 'medium';
+  if (utilization < 0.9) return 'high';
+  return 'full';
+};
+
+// Статистика по типам транспорта
+const getTransportTypesBreakdown = (occupancyRecords) => {
+  const breakdown = {};
+  
+  occupancyRecords.forEach(record => {
+    const type = record.transport_type;
+    if (!breakdown[type]) {
+      breakdown[type] = {
+        count: 0,
+        total_entered: 0,
+        total_exited: 0,
+        average_occupancy: 0
+      };
+    }
+    
+    breakdown[type].count++;
+    breakdown[type].total_entered += record.passengers_entered;
+    breakdown[type].total_exited += record.passengers_exited;
+  });
+  
+  // Расчет средней заполненности для каждого типа
+  Object.keys(breakdown).forEach(type => {
+    const typeRecords = occupancyRecords.filter(r => r.transport_type === type);
+    breakdown[type].average_occupancy = typeRecords.length > 0
+      ? typeRecords.reduce((sum, r) => sum + r.occupancy_metrics.estimated_occupancy, 0) / typeRecords.length
+      : 0;
+  });
+  
+  return breakdown;
+};
+
+// Функция для создания ZIP архива с несколькими GeoJSON файлами
+const createGeojsonZip = (geojsonFiles) => {
+  // Импортируем JSZip динамически
+  import('jszip').then(JSZip => {
+    const zip = new JSZip.default();
+    
+    // Добавляем основной файл
+    const mainGeojsonString = JSON.stringify(geojsonFiles.main, null, 2);
+    zip.file(`${exportFileName.value}_main.geojson`, mainGeojsonString);
+    
+    // Добавляем файлы для каждой группы транспорта
+    Object.keys(geojsonFiles).forEach(key => {
+      if (key !== 'main') {
+        const transportGeojsonString = JSON.stringify(geojsonFiles[key], null, 2);
+        const filename = `${exportFileName.value}_transport_${key.replace(/\s+/g, '_')}.geojson`;
+        zip.file(filename, transportGeojsonString);
+      }
+    });
+    
+    // Генерируем и скачиваем ZIP файл
+    zip.generateAsync({ type: 'blob' }).then(content => {
+      const url = URL.createObjectURL(content);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${exportFileName.value}_geojson.zip`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    });
+  }).catch(error => {
+    console.error('Error loading JSZip:', error);
+    // Fallback: скачиваем только основной файл
+    downloadSingleGeojson(geojsonFiles.main, `${exportFileName.value}.geojson`);
+  });
+};
+
+// Функция для скачивания одиночного GeoJSON файла
+const downloadSingleGeojson = (geojsonData, filename) => {
+  const geojsonString = JSON.stringify(geojsonData, null, 2);
+  const blob = new Blob([geojsonString], { type: 'application/geo+json' });
+  const url = URL.createObjectURL(blob);
+  
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
 };
 
 // Добавляем vm в глобальную область видимости для использования в popup
@@ -3200,5 +3412,26 @@ onBeforeMount(async() => {
 .intensity-micro-label {
   font-size: 0.6rem;
   color: #6c757d;
+}
+
+/* Стили для упрощенных маркеров */
+:deep(.simple-point) {
+  background: transparent !important;
+  border: none !important;
+}
+
+:deep(.direction-arrow) {
+  background: transparent !important;
+  border: none !important;
+}
+
+:deep(.position-label) {
+  background: transparent !important;
+  border: none !important;
+}
+
+/* Убираем стандартные тени маркеров */
+:deep(.leaflet-marker-icon) {
+  filter: none !important;
 }
 </style>
