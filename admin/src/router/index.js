@@ -1,5 +1,4 @@
 import { createRouter, createWebHistory } from 'vue-router';
-import PublicTransportsNumbersView from '../views/PublicTransportsNumbersView.vue';
 import PublicTransportsView from '../views/PublicTransportsView.vue';
 import TransportsView from '../views/TransportsView.vue';
 import MeasuringsView from '../views/MeasuringsView.vue';
@@ -20,11 +19,6 @@ const router = createRouter({
       path: "/Intensivitys",
       name: "IntensivitysView",
       component: IntensivitysView
-    },
-    {
-      path: "/PublicTransportsNumbers",
-      name: "PublicTransportsNumbersView",
-      component: PublicTransportsNumbersView
     },
     {
       path: "/PeoplesInPublicsTransportView",

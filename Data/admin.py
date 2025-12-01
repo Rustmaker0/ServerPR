@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import *
+from .models import Measuring, Transport, Intensivity, PublicTransport, PeopleInPublicTransport
 
 @admin.register(Measuring)
 class MeasuringAdmin(admin.ModelAdmin):
@@ -53,15 +53,29 @@ class PublicTransportAdmin(admin.ModelAdmin):
     search_fields = ['name']
 
 
-@admin.register(PublicTransportNumber)
-class PublicTransportNumberAdmin(admin.ModelAdmin):
-    list_display = ['public_transport', 'number']
-    list_filter = ['public_transport']
-    search_fields = ['public_transport__name', 'number']
+# УДАЛИТЕ ЭТОТ КЛАСС - МОДЕЛЬ PublicTransportNumber БОЛЬШЕ НЕ СУЩЕСТВУЕТ
+# @admin.register(PublicTransportNumber)
+# class PublicTransportNumberAdmin(admin.ModelAdmin):
+#     list_display = ['public_transport', 'number']
+#     list_filter = ['public_transport']
+#     search_fields = ['public_transport__name', 'number']
 
 
 @admin.register(PeopleInPublicTransport)
 class PeopleInPublicTransportAdmin(admin.ModelAdmin):
-    list_display = ['public_transport_number', 'measuring', 'time', 'entering_people', 'leaving_people']
-    list_filter = ['public_transport_number', 'measuring', 'time']
-    search_fields = ['public_transport_number__public_transport__name', 'measuring__measurment_time']
+    list_display = ['public_transport', 'transport_number', 'measuring', 'time', 'entering_people', 'leaving_people']
+    list_filter = ['public_transport', 'measuring', 'time']
+    search_fields = ['public_transport__name', 'transport_number', 'measuring__measurment_time']
+    
+    # Обновленные fieldsets для новой структуры
+    fieldsets = (
+        (None, {
+            'fields': ('public_transport', 'transport_number', 'measuring', 'time', 'comment')
+        }),
+        ('Capacity', {
+            'fields': ('sitting_place', 'standing_place'),
+        }),
+        ('People Count', {
+            'fields': ('entering_people', 'leaving_people'),
+        }),
+    )

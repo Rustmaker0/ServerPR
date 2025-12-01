@@ -1,10 +1,9 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
-
 from Data.models import *
 
-
 User = get_user_model()
+
 
 class MeasuringSerializer(serializers.ModelSerializer):
     user = serializers.PrimaryKeyRelatedField(
@@ -12,59 +11,64 @@ class MeasuringSerializer(serializers.ModelSerializer):
         allow_null=True,
         required=False
     )
+    
     def get_user(self, obj):
         return obj.user.username if obj.user else None 
+    
     class Meta:
         model = Measuring
         fields = '__all__'
 
-class TransportSerializer(serializers.ModelSerializer):
 
+class TransportSerializer(serializers.ModelSerializer):
     class Meta:
-        model=Transport
-        fields="__all__"
+        model = Transport
+        fields = "__all__"
+
 
 class IntensivitySerializer(serializers.ModelSerializer):
-    """
-    transport=TransportSerializer(read_only=True)
-    transport_id=serializers.PrimaryKeyRelatedField(queryset=Transport.objects.all(), write_only=True, source="transport")
-    measuring=MeasuringSerializer(read_only=True)
-    measuring_id=serializers.PrimaryKeyRelatedField(queryset=Measuring.objects.all(), write_only=True, source="measuring")
-    """
     class Meta:
-        model=Intensivity
-        fields="__all__"
+        model = Intensivity
+        fields = "__all__"
+
 
 class PublicTransportSerializer(serializers.ModelSerializer):
-
     class Meta:
-        model=PublicTransport
-        fields="__all__"
+        model = PublicTransport
+        fields = "__all__"
 
-class PublicTransportNumberSerializer(serializers.ModelSerializer):
-    """
-    public_transport=PublicTransportSerializer(read_only=True)
-    public_transport_id=serializers.PrimaryKeyRelatedField(queryset=PublicTransport.objects.all(), write_only=True, source="publicTransport")
-    """
-    class Meta:
-        model=PublicTransportNumber
-        fields="__all__"
 
 class PeopleInPublicTransportSerializer(serializers.ModelSerializer):
-    """
-    public_transport_number=PublicTransportNumberSerializer(read_only=True)
-    public_transport_number_id=serializers.PrimaryKeyRelatedField(queryset=PublicTransportNumber.objects.all(), write_only=True, source="publicTransportNumber")
-    measuring=MeasuringSerializer(read_only=True)
-    measuring_id=serializers.PrimaryKeyRelatedField(queryset=Measuring.objects.all(), write_only=True, source="measuring")
-    """
+    # Опционально: добавить вложенные сериализаторы для удобства
+    public_transport_info = PublicTransportSerializer(source='public_transport', read_only=True)
+    measuring_info = MeasuringSerializer(source='measuring', read_only=True)
+    
     class Meta:
-        model=PeopleInPublicTransport
-        fields="__all__"
+        model = PeopleInPublicTransport
+        fields = [
+            'id',
+            'sitting_place',
+            'standing_place',
+            'entering_people',
+            'leaving_people',
+            'time',
+            'transport_number',
+            'public_transport',
+            'public_transport_info',  # для чтения
+            'measuring',
+            'measuring_info',  # для чтения
+        ]
+        extra_kwargs = {
+            'public_transport': {'write_only': True},
+            'measuring': {'write_only': True},
+        }
+
 
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ['id', 'username', 'email','first_name','last_name', 'is_superuser', 'is_active']
+        fields = ['id', 'username', 'email', 'first_name', 'last_name', 'is_superuser', 'is_active']
+
 
 class UserRegistrationSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, required=True, min_length=6)
@@ -86,14 +90,16 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         user = User.objects.create_user(**validated_data)
         if is_superuser:
             user.is_superuser = True
-            user.is_staff = True  # Обычно суперпользователь также является staff
+            user.is_staff = True
             user.save()
         return user
-        
+
+
 class UserUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ['id', 'username', 'email', 'first_name', 'last_name', 'is_active', 'date_joined']
+
 
 class UserDetailSerializer(serializers.ModelSerializer):
     class Meta:

@@ -115,42 +115,42 @@
               </div>
 
               <!-- Управление радиусом выбора (только для круга) -->
-<div class="radius-control" v-if="selectionType === 'circle'">
-  <label class="form-label mb-2">
-    <i class="bi bi-bullseye"></i> Радиус выбора:
-  </label>
-  
-  <!-- Числовое поле ввода -->
-  <div class="input-group input-group-sm mb-2" style="width: 200px;">
-    <input 
-      type="number" 
-      class="form-control" 
-      min="10" 
-      max="1000" 
-      step="10"
-      v-model.number="selectionRadius"
-      @input="updateTempSelectionRadius"
-      placeholder="Введите радиус"
-    >
-    <span class="input-group-text">м</span>
-  </div>
-  
-  <!-- Ползунок для тонкой настройки -->
-  <div class="d-flex align-items-center gap-2">
-    <small>10м</small>
-    <input 
-      type="range" 
-      class="form-range flex-grow-1" 
-      min="10" 
-      max="300" 
-      step="10"
-      v-model.number="selectionRadius"
-      @input="updateTempSelectionRadius"
-    >
-    <small>300м</small>
-    <span class="badge bg-primary ms-2">{{ selectionRadius }}м</span>
-  </div>
-</div>
+              <div class="radius-control" v-if="selectionType === 'circle'">
+                <label class="form-label mb-2">
+                  <i class="bi bi-bullseye"></i> Радиус выбора:
+                </label>
+                
+                <!-- Числовое поле ввода -->
+                <div class="input-group input-group-sm mb-2" style="width: 200px;">
+                  <input 
+                    type="number" 
+                    class="form-control" 
+                    min="10" 
+                    max="1000" 
+                    step="10"
+                    v-model.number="selectionRadius"
+                    @input="updateTempSelectionRadius"
+                    placeholder="Введите радиус"
+                  >
+                  <span class="input-group-text">м</span>
+                </div>
+                
+                <!-- Ползунок для тонкой настройки -->
+                <div class="d-flex align-items-center gap-2">
+                  <small>10м</small>
+                  <input 
+                    type="range" 
+                    class="form-range flex-grow-1" 
+                    min="10" 
+                    max="300" 
+                    step="10"
+                    v-model.number="selectionRadius"
+                    @input="updateTempSelectionRadius"
+                  >
+                  <small>300м</small>
+                  <span class="badge bg-primary ms-2">{{ selectionRadius }}м</span>
+                </div>
+              </div>
 
               <!-- Информация о полигоне -->
               <div v-if="selectionType === 'polygon'" class="polygon-info">
@@ -628,7 +628,7 @@
                     <span class="info-label"><i class="bi bi-geo-alt"></i> Адрес:</span>
                     <span class="info-value">{{ measuring.street_name || 'Не указан' }}</span>
                   </div>
-                                    <!-- В разделе с основной информацией (рядом с другими info-item) -->
+                  <!-- В разделе с основной информацией -->
                   <div class="info-item">
                     <span class="info-label"><i class="bi bi-chat-left-text"></i> Комментарий:</span>
                     <span class="info-value">{{ measuring.comment || 'Нет комментария' }}</span>
@@ -719,10 +719,11 @@
                     <div v-for="child in measuring.children.filter(c => !c.transport)" :key="child.id" class="col-md-6 col-lg-4">
                       <div class="child-card passenger-card">
                         <div class="child-content">
+                          <!-- ИЗМЕНЕНО: новая структура данных -->
                           <div class="transport-info-compact">
                             <i class="bi bi-bus-front"></i>
-                            {{ publicTransportsById[publicTransportsNumbersById[child.public_transport_number]?.public_transport]?.name }} 
-                            {{ publicTransportsNumbersById[child.public_transport_number]?.number }}
+                            {{ publicTransportsById[child.public_transport]?.name }} 
+                            №{{ child.transport_number || 'Не указан' }}
                             <button v-if="isAdmin" class="btn btn-sm btn-outline-danger btn-delete" @click="onDeleteSingle(child)" >
                               <i class="bi bi-trash"></i>
                             </button>
@@ -795,7 +796,6 @@ import * as XLSX from 'xlsx';
 import AdminOnly from '@/components/AdminOnly.vue'
 import { useAuthStore } from '@/stores/auth'
 import { Modal } from 'bootstrap';
-import html2canvas from 'html2canvas';
 
 const authStore = useAuthStore()
 const isAdmin = computed(() => authStore.isAdmin)
@@ -817,8 +817,6 @@ L.Icon.Default.mergeOptions({
   iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
 });
-// Переменная для скриншота
-const mapScreenshot = ref(null);
 
 // Новые переменные для полигона
 const selectionType = ref('circle'); // 'circle' или 'polygon'
@@ -833,7 +831,7 @@ const filteredMeasurements = ref([]);
 const loading = ref(false);
 const transports = ref([]);
 const publicTransports = ref([]);
-const publicTransportsNumbers = ref([]);
+// УДАЛЕНО: publicTransportsNumbers больше не используется
 const users = ref([]);
 const showMap = ref(false);
 const mapMode = ref('allRoutes');
@@ -884,7 +882,7 @@ const filters = ref({
 
 const transportsById = computed(() => _.keyBy(transports.value, x => x.id));
 const publicTransportsById = computed(() => _.keyBy(publicTransports.value, x => x.id));
-const publicTransportsNumbersById = computed(() => _.keyBy(publicTransportsNumbers.value, x => x.id));
+// УДАЛЕНО: publicTransportsNumbersById больше не используется
 const usersById = computed(() => _.keyBy(users.value, x => x.id));
 
 // Проверка активных фильтров
@@ -1357,9 +1355,9 @@ const applyOtherFilters = (data) => {
     if (filters.value.passengerTransportTypes.length > 0 && filters.value.type !== 'intensivity') {
       const hasMatchingPassengerTransport = children.some(child => {
         if (!child.transport) {
-          const ptNumber = publicTransportsNumbersById.value[child.public_transport_number];
-          if (ptNumber && ptNumber.public_transport) {
-            return filters.value.passengerTransportTypes.includes(ptNumber.public_transport.toString());
+          // ИЗМЕНЕНО: теперь напрямую проверяем public_transport
+          if (child.public_transport) {
+            return filters.value.passengerTransportTypes.includes(child.public_transport.toString());
           }
         }
         return false;
@@ -1951,7 +1949,7 @@ const resetRegularFilters = () => {
   
   console.log('Regular filters reset successfully');
 };
-// АЛЬТЕРНАТИВНАЯ версия функции calculateBearing (используйте эту если первая не работает)
+
 const calculateBearing = (start, end) => {
   const startLng = start[1] * Math.PI / 180;
   const startLat = start[0] * Math.PI / 180;
@@ -2224,10 +2222,7 @@ async function fetchPublicTransports(){
   publicTransports.value = r.data;
 }
 
-async function fetchPublicTransportsNumbers(){
-  const r = await axios.get("/api/publicTransportsNumbers/");
-  publicTransportsNumbers.value = r.data;
-}
+// УДАЛЕНО: fetchPublicTransportsNumbers больше не используется
 
 async function fetchData() {
   loading.value = true;
@@ -2238,13 +2233,20 @@ async function fetchData() {
       axios.get("/api/peoplesInPublicsTransport/")
     ]);
 
+    // Обрабатываем данные пассажиропотока
+    const processedPeoples = peoplesRes.data.map(item => ({
+      ...item,
+      // Используем public_transport из вложенного объекта
+      public_transport: item.public_transport_info?.id || null
+    }));
+
     const grouped = _.chain(measuringsRes.data)
       .map(m => ({
         ...m,
         type: 'measuring',
         children: [
           ...intensivitysRes.data.filter(i => i.measuring === m.id),
-          ...peoplesRes.data.filter(p => p.measuring === m.id)
+          ...processedPeoples.filter(p => p.measuring_info?.id === m.id)
         ]
       }))
       .orderBy('id')
@@ -2331,7 +2333,7 @@ async function onDelete(measuringId) {
     await fetchData();
     await fetchTransports();
     await fetchPublicTransports();
-    await fetchPublicTransportsNumbers();
+    // УДАЛЕНО: fetchPublicTransportsNumbers больше не используется
   } catch (error) {
     console.error('Error deleting:', error);
   }
@@ -2351,7 +2353,7 @@ async function onDeleteSingle(item) {
     await fetchData();
     await fetchTransports();
     await fetchPublicTransports();
-    await fetchPublicTransportsNumbers();
+    // УДАЛЕНО: fetchPublicTransportsNumbers больше не используется
   } catch (error) {
     console.error('Error deleting:', error);
   }
@@ -2483,11 +2485,13 @@ const generateExcelFile = () => {
     return row;
   });
   
-  // СОЗДАЕМ ДАННЫЕ ДЛЯ ЛИСТА ОБЩЕСТВЕННОГО ТРАНСПОРТА
+  // ОБНОВЛЕННЫЕ ДАННЫЕ ДЛЯ ЛИСТА ОБЩЕСТВЕННОГО ТРАНСПОРТА
   const publicTransportHeaders = [
     'ID измерения',
     'Время измерения',
     'Адрес',
+    'Долгота позиции', 
+    'Широта позиции',  
     'Тип транспорта',
     'Номер транспорта',
     'Время записи',
@@ -2504,15 +2508,17 @@ const generateExcelFile = () => {
     const transportRecords = getPublicTransportData(measuring.id);
     
     transportRecords.forEach(record => {
-      const ptNumber = publicTransportsNumbersById.value[record.public_transport_number];
-      const transport = ptNumber ? publicTransportsById.value[ptNumber.public_transport] : null;
+      // Используем новую структуру данных
+      const transport = publicTransportsById.value[record.public_transport];
       
       publicTransportData.push({
         'ID измерения': measuring.id,
         'Время измерения': formatDateTime(measuring.measurment_time),
         'Адрес': measuring.street_name || '',
+        'Долгота позиции': measuring.longtiude_position || '',
+        'Широта позиции': measuring.latitude_position || '', 
         'Тип транспорта': transport ? transport.name : 'Неизвестный',
-        'Номер транспорта': ptNumber ? ptNumber.number : 'Неизвестный',
+        'Номер транспорта': record.transport_number || 'Не указан',
         'Время записи': formatTime(record.time),
         'Сидячих мест': record.sitting_place,
         'Стоячих мест': record.standing_place,
@@ -2690,8 +2696,8 @@ const generateGeojsonFile = () => {
     );
     
     passengerChildren.forEach(child => {
-      const ptNumber = publicTransportsNumbersById.value[child.public_transport_number];
-      const transport = ptNumber ? publicTransportsById.value[ptNumber.public_transport] : null;
+      // ИЗМЕНЕНО: новая структура данных
+      const transport = publicTransportsById.value[child.public_transport];
       
       const transportRecord = {
         // Основные поля из API
@@ -2705,7 +2711,10 @@ const generateGeojsonFile = () => {
         
         // Простая информация о транспорте
         transport_type: transport ? transport.name : 'Неизвестный транспорт',
-        transport_number: ptNumber ? ptNumber.number : 'Неизвестный номер',
+        transport_number: child.transport_number || 'Не указан',
+         // координаты позиции
+        position_longitude: measuring.longtiude_position, 
+       position_latitude: measuring.latitude_position
       
       };
       
@@ -2912,7 +2921,7 @@ onBeforeMount(async() => {
   await fetchUsers();
   await fetchTransports();
   await fetchPublicTransports();
-  await fetchPublicTransportsNumbers();
+  // УДАЛЕНО: fetchPublicTransportsNumbers больше не используется
   await fetchData();
   setupGlobalVM();
 });

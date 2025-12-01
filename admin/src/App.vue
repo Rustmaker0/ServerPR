@@ -17,9 +17,6 @@
               <router-link class="nav-link" to="/PublicTransports" active-class="active-link">Общественный транспорт</router-link>
             </li>
             <li class="nav-item">
-              <router-link class="nav-link" to="/PublicTransportsNumbers" active-class="active-link">Номера общественного транспорта</router-link>
-            </li>
-            <li class="nav-item">
               <router-link class="nav-link" to="/register" active-class="active-link">Администрирование</router-link>
             </li>
           </ul>

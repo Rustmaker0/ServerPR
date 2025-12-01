@@ -31,7 +31,6 @@ router.register(r'measurings', MeasuringViewset)
 router.register(r'transports', TransportViewset)
 router.register(r'intensivitys', IntensivityViewset)
 router.register(r'publicTransports', PublicTransportViewset)
-router.register(r'publicTransportsNumbers', PublicTransportNumberViewset)
 router.register(r'peoplesInPublicsTransport', PeopleInPublicTransportViewset)
 router.register(r'user', UserViewset, basename='users')
 

@@ -7,7 +7,7 @@ from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from django.shortcuts import get_object_or_404
 from rest_framework.authtoken.models import Token
-from Data.models import *
+from Data.models import Measuring, Transport, Intensivity, PublicTransport, PeopleInPublicTransport
 from Data.serializers import *
 from rest_framework.authentication import TokenAuthentication
 
@@ -83,16 +83,17 @@ class PublicTransportViewset(
     queryset = PublicTransport.objects.all()
     serializer_class = PublicTransportSerializer
 
-class PublicTransportNumberViewset(
-    mixins.CreateModelMixin,
-    mixins.RetrieveModelMixin,
-    mixins.UpdateModelMixin,
-    mixins.DestroyModelMixin,
-    mixins.ListModelMixin,
-    GenericViewSet
-):
-    queryset = PublicTransportNumber.objects.all()
-    serializer_class = PublicTransportNumberSerializer
+# УДАЛИТЕ ЭТОТ КЛАСС - МОДЕЛЬ PublicTransportNumber БОЛЬШЕ НЕ СУЩЕСТВУЕТ
+# class PublicTransportNumberViewset(
+#     mixins.CreateModelMixin,
+#     mixins.RetrieveModelMixin,
+#     mixins.UpdateModelMixin,
+#     mixins.DestroyModelMixin,
+#     mixins.ListModelMixin,
+#     GenericViewSet
+# ):
+#     queryset = PublicTransportNumber.objects.all()
+#     serializer_class = PublicTransportNumberSerializer
 
 class PeopleInPublicTransportViewset(
     mixins.CreateModelMixin,
@@ -462,6 +463,3 @@ class UserViewset(GenericViewSet):
             "deleted_measurements": measurements_count,
             "warning": f"Внимание: вместе с пользователем удалено {measurements_count} замеров"
         }, status=status.HTTP_200_OK)
-
-
-    
