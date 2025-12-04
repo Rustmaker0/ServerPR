@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
-from Data.models import *
+from Data.models import Measuring, Transport, Intensivity, PublicTransport, PeopleInPublicTransport
 
 User = get_user_model()
 
@@ -12,8 +12,10 @@ class MeasuringSerializer(serializers.ModelSerializer):
         required=False
     )
     
-    def get_user(self, obj):
-        return obj.user.username if obj.user else None 
+    username = serializers.SerializerMethodField(read_only=True)
+    
+    def get_username(self, obj):
+        return obj.user.username if obj.user else None
     
     class Meta:
         model = Measuring
@@ -39,9 +41,19 @@ class PublicTransportSerializer(serializers.ModelSerializer):
 
 
 class PeopleInPublicTransportSerializer(serializers.ModelSerializer):
-    # Опционально: добавить вложенные сериализаторы для удобства
+    # Вложенные сериализаторы для чтения
     public_transport_info = PublicTransportSerializer(source='public_transport', read_only=True)
     measuring_info = MeasuringSerializer(source='measuring', read_only=True)
+    
+    # Поля для записи (только ID)
+    public_transport = serializers.PrimaryKeyRelatedField(
+        queryset=PublicTransport.objects.all(),
+        write_only=True
+    )
+    measuring = serializers.PrimaryKeyRelatedField(
+        queryset=Measuring.objects.all(),
+        write_only=True
+    )
     
     class Meta:
         model = PeopleInPublicTransport
@@ -53,15 +65,11 @@ class PeopleInPublicTransportSerializer(serializers.ModelSerializer):
             'leaving_people',
             'time',
             'transport_number',
-            'public_transport',
-            'public_transport_info',  # для чтения
-            'measuring',
-            'measuring_info',  # для чтения
+            'public_transport',  # write-only (принимает ID)
+            'measuring',  # write-only (принимает ID)
+            'public_transport_info',  # read-only (вложенный объект)
+            'measuring_info',  # read-only (вложенный объект)
         ]
-        extra_kwargs = {
-            'public_transport': {'write_only': True},
-            'measuring': {'write_only': True},
-        }
 
 
 class UserSerializer(serializers.ModelSerializer):
