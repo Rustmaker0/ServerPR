@@ -16,7 +16,6 @@ pipeline {
     IMAGE_TAG       = 'latest'
     IMAGE_NAME      = "${IMAGE_NAME_BASE}:${IMAGE_TAG}"
     CONTAINER_NAME  = 'serverpr-web'
-
     APP_PATH        = '/opt/app'
     GUNICORN_PORT   = '8000'
   }
@@ -32,11 +31,13 @@ pipeline {
         script {
           checkout([$class: 'GitSCM',
             branches: [[name: "*/${BRANCH}"]],
-            userRemoteConfigs: [[url: REPO_URL, credentialsId: GITHUB_CREDS]],
+            userRemoteConfigs: [[url: REPO_URL, credentialsId: GITHUB_CREDS?.trim() ? GITHUB_CREDS : null]],
             extensions: [[$class: 'CloneOption', depth: 1, noTags: true, shallow: true, timeout: 30]]
           ])
+
           env.IMAGE_TAG  = sh(returnStdout: true, script: "git rev-parse --short=12 HEAD").trim()
           env.IMAGE_NAME = "${IMAGE_NAME_BASE}:${IMAGE_TAG}"
+
           echo "Building image: ${env.IMAGE_NAME}"
         }
       }
@@ -44,10 +45,11 @@ pipeline {
 
     stage('Preflight checks') {
       steps {
-        sh '''
-          set -e
+        sh '''#!/bin/bash
+          set -euo pipefail
           test -f Dockerfile || { echo "Dockerfile missing"; exit 1; }
           test -f requirements.txt || { echo "requirements.txt missing"; exit 1; }
+
           echo "Preflight OK"
         '''
       }
@@ -62,7 +64,11 @@ pipeline {
           CACHE_DIR="${WORKSPACE}/.docker_cache"
           mkdir -p "$CACHE_DIR"
 
-          DOCKER_BUILDKIT=1 docker build --pull --network=host \
+          echo "Using build cache at $CACHE_DIR"
+
+          DOCKER_BUILDKIT=1 docker build \
+            --pull \
+            --network=host \
             --build-arg BUILDKIT_INLINE_CACHE=1 \
             -t "${IMAGE_NAME}" .
 
@@ -74,17 +80,22 @@ pipeline {
     stage('Stop anything using port 8000') {
       steps {
         sh '''
-          echo "Checking port 8000…"
-          PID=$(lsof -t -i:8000 || true)
+          echo "Checking containers that occupy port 8000…"
 
-          if [ -n "$PID" ]; then
-            echo "Port 8000 in use by PID $PID – stopping container..."
-            docker ps --filter "publish=8000" -q | xargs -r docker stop
-            docker ps -a --filter "publish=8000" -q | xargs -r docker rm
+          # Найти контейнеры, где публичный порт == 8000
+          USED=$(docker ps --format "{{.ID}} {{.Ports}}" | grep ":8000->" | awk '{print $1}' || true)
+
+          if [ -n "$USED" ]; then
+            echo "Containers using port 8000: $USED"
+            docker stop $USED || true
+            docker rm $USED || true
+          else
+            echo "No containers use port 8000."
           fi
 
-          docker ps --filter name=${CONTAINER_NAME} -q | xargs -r docker stop
-          docker ps -a --filter name=${CONTAINER_NAME} -q | xargs -r docker rm
+          # На всякий случай останавливаем контейнер по имени
+          docker ps --filter name=${CONTAINER_NAME} -q | xargs -r docker stop || true
+          docker ps -a --filter name=${CONTAINER_NAME} -q | xargs -r docker rm || true
         '''
       }
     }
@@ -94,7 +105,7 @@ pipeline {
         sh '''
           set -e
           mkdir -p ${APP_PATH} ${APP_PATH}/media ${APP_PATH}/staticfiles
-          [ -f ${APP_PATH}/db.sqlite3 ] || touch ${APP_PATH}/db.sqlite3
+          [ -f ${APP_PATH}/db.sqlite3 ] || install -m 664 /dev/null ${APP_PATH}/db.sqlite3
 
           if [ -f .env ]; then
             install -m 600 .env ${APP_PATH}/.env
@@ -102,7 +113,7 @@ pipeline {
             cp .env.example ${APP_PATH}/.env
           fi
 
-          grep -q '^DJANGO_SETTINGS_MODULE=' ${APP_PATH}/.env || \
+          grep -q '^DJANGO_SETTINGS_MODULE=' ${APP_PATH}/.env 2>/dev/null || \
             echo 'DJANGO_SETTINGS_MODULE=RoadData.settings_prod' >> ${APP_PATH}/.env
         '''
       }
@@ -121,12 +132,14 @@ pipeline {
             -v ${APP_PATH}/staticfiles:/app/staticfiles \
             "${IMAGE_NAME}"
 
-          echo "Waiting for backend…"
-          for i in {1..30}; do
+          echo "Waiting backend to start..."
+          for i in $(seq 1 30); do
             code=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:${GUNICORN_PORT}/api/transports/ || true)
-            echo "Try $i: HTTP $code"
-            [[ "$code" == "200" || "$code" == "401" || "$code" == "403" ]] && break
+            if [ "$code" = "200" ] || [ "$code" = "401" ] || [ "$code" = "403" ]; then
+              echo "Backend up (HTTP $code)"; break
+            fi
             sleep 2
+            if [ $i -eq 30 ]; then echo "Backend did not start"; docker logs ${CONTAINER_NAME}; exit 1; fi
           done
         '''
       }
@@ -135,6 +148,7 @@ pipeline {
     stage('Migrate & Collectstatic') {
       steps {
         sh '''
+          set -e
           docker exec ${CONTAINER_NAME} python manage.py migrate --noinput
           docker exec ${CONTAINER_NAME} python manage.py collectstatic --noinput
         '''
@@ -150,6 +164,11 @@ pipeline {
           GID=$(id -g)
 
           docker volume create npm_cache || true
+
+          docker run --rm \
+            -u root \
+            -v npm_cache:/tmp/.npm \
+            bash -c "chown -R ${UID}:${GID} /tmp/.npm || true"
 
           docker run --rm -u $UID:$GID \
             -e HOME=/tmp \
