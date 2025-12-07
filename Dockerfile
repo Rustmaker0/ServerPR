@@ -25,4 +25,4 @@ ENV DJANGO_SETTINGS_MODULE=RoadData.settings_prod
 HEALTHCHECK --interval=10s --timeout=10s --retries=10 \
   CMD curl -f http://127.0.0.1:8000/api/transports/ || exit 1
 
-CMD sh -c "python manage.py migrate && python manage.py collectstatic --noinput && gunicorn RoadData.wsgi:application --bind 0.0.0.0:8000 --workers 3"
+CMD gunicorn RoadData.wsgi:application --bind 0.0.0.0:8000 --workers 3
