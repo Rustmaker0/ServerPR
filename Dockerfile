@@ -5,18 +5,31 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    gcc \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+
 COPY requirements.txt /app/requirements.txt
-RUN python -m pip install --upgrade pip setuptools wheel && \
-    pip install --no-cache-dir --prefer-binary --timeout 600 --retries 10 -r requirements.txt && \
-    mkdir -p /var/log/gunicorn && chmod -R 755 /var/log/gunicorn
+
+RUN pip install --no-cache-dir --prefer-binary \
+    -i https://pypi.tuna.tsinghua.edu.cn/simple \
+    -r requirements.txt
 
 COPY . /app
 
 ENV DJANGO_SETTINGS_MODULE=RoadData.settings_prod
 
+# Healthcheck
 HEALTHCHECK --interval=10s --timeout=10s --retries=10 \
   CMD curl -f http://127.0.0.1:8000/api/transports/ || exit 1
 
-CMD sh -c "python manage.py migrate && \
-           python manage.py collectstatic --noinput && \
-           gunicorn RoadData.wsgi:application --bind 0.0.0.0:8000 --workers 3"
+CMD sh -c "
+    python manage.py migrate &&
+    python manage.py collectstatic --noinput &&
+    gunicorn RoadData.wsgi:application \
+        --bind 0.0.0.0:8000 \
+        --workers 3
+"
