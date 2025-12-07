@@ -1,19 +1,32 @@
 pipeline {
   agent any
 
+  options {
+    timestamps()
+    disableConcurrentBuilds()
+    timeout(time: 40, unit: 'MINUTES')
+  }
+
   environment {
-    REPO_URL     = 'https://github.com/Rustmaker0/ServerPR.git'
-    BRANCH       = 'main'
-    GITHUB_CREDS = 'github-token'
+    REPO_URL       = 'https://github.com/Rustmaker0/ServerPR.git'
+    BRANCH         = 'main'
+    GITHUB_CREDS   = 'github-token'
+
+    IMAGE_NAME_BASE = 'serverpr-web'
+    IMAGE_TAG       = 'latest'
+    IMAGE_NAME      = "${IMAGE_NAME_BASE}:${IMAGE_TAG}"
+    CONTAINER_NAME  = 'serverpr-web'
+    APP_PATH        = '/opt/app'
+    GUNICORN_PORT   = '8000'
   }
 
   stages {
 
-    stage('Prep Workspace') {
+    stage('Prep workspace') {
       steps { cleanWs() }
     }
 
-    stage('Checkout') {
+    stage('Checkout (shallow)') {
       steps {
         checkout([$class: 'GitSCM',
           branches: [[name: "*/${BRANCH}"]],
@@ -27,46 +40,61 @@ pipeline {
       steps {
         sh '''
           echo "Building backend image..."
+
+          # ВАЖНО: BuildKit выключен
           DOCKER_BUILDKIT=0 docker build -t serverpr-web:latest .
         '''
       }
     }
 
-    stage('Stop old container') {
+    stage('Stop & remove old container') {
       steps {
         sh '''
-          echo "Stopping old containers..."
-          docker compose -f docker-compose.yml down || true
+          docker stop ${CONTAINER_NAME} || true
+          docker rm   ${CONTAINER_NAME} || true
         '''
       }
     }
 
-    stage('Start new container') {
+    stage('Prepare environment & volumes') {
       steps {
         sh '''
-          echo "Starting new containers..."
-          docker compose -f docker-compose.yml up -d --force-recreate --build
+          mkdir -p ${APP_PATH} ${APP_PATH}/media ${APP_PATH}/staticfiles
+
+          [ -f ${APP_PATH}/db.sqlite3 ] || touch ${APP_PATH}/db.sqlite3
+
+          if [ ! -f ${APP_PATH}/.env ]; then
+            cp .env.example ${APP_PATH}/.env
+          fi
         '''
       }
     }
 
-    stage('Healthcheck backend') {
+    stage('Run new container') {
       steps {
         sh '''
-          echo "Checking backend availability..."
+          docker run -d --name ${CONTAINER_NAME} \
+            --restart unless-stopped \
+            --env-file ${APP_PATH}/.env \
+            -p 127.0.0.1:${GUNICORN_PORT}:${GUNICORN_PORT} \
+            -v ${APP_PATH}/db.sqlite3:/app/db.sqlite3 \
+            -v ${APP_PATH}/media:/app/media \
+            -v ${APP_PATH}/staticfiles:/app/staticfiles \
+            serverpr-web:latest
+
+          echo "Waiting for backend to start..."
+
           for i in $(seq 1 30); do
-            code=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8000/api/transports/ || true)
-
+            code=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:${GUNICORN_PORT}/api/transports/ || true)
             if [ "$code" = "200" ] || [ "$code" = "401" ] || [ "$code" = "403" ]; then
               echo "Backend UP (HTTP $code)"
               exit 0
             fi
-
             sleep 2
           done
 
           echo "Backend failed to start!"
-          docker compose logs
+          docker logs ${CONTAINER_NAME}
           exit 1
         '''
       }
@@ -75,18 +103,15 @@ pipeline {
     stage('Migrate & Collectstatic') {
       steps {
         sh '''
-          echo "Running migrations..."
-          docker compose exec -T app_web python manage.py migrate --noinput
-
-          echo "Collecting static..."
-          docker compose exec -T app_web python manage.py collectstatic --noinput
+          docker exec ${CONTAINER_NAME} python manage.py migrate --noinput
+          docker exec ${CONTAINER_NAME} python manage.py collectstatic --noinput
         '''
       }
     }
   }
 
   post {
-    success { echo '🚀 Deploy OK — everything is running' }
-    failure { echo '❌ Deploy failed' }
+    success { echo '🚀 Deploy OK' }
+    failure { echo '❌ Deploy FAILED' }
   }
 }
