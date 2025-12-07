@@ -82,20 +82,25 @@ pipeline {
             -v ${APP_PATH}/staticfiles:/app/staticfiles \
             serverpr-web:latest
 
-          echo "Waiting for backend to start..."
+          echo "Waiting for container health..."
 
-          for i in $(seq 1 30); do
-            code=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:${GUNICORN_PORT}/api/transports/ || true)
-            if [ "$code" = "200" ] || [ "$code" = "401" ] || [ "$code" = "403" ]; then
-              echo "Backend UP (HTTP $code)"
-              exit 0
-            fi
-            sleep 2
-          done
+for i in $(seq 1 30); do
+  status=$(docker inspect --format='{{.State.Health.Status}}' ${CONTAINER_NAME} || echo "starting")
 
-          echo "Backend failed to start!"
-          docker logs ${CONTAINER_NAME}
-          exit 1
+  echo "Status: $status"
+
+  if [ "$status" = "healthy" ]; then
+    echo "Backend is HEALTHY"
+    exit 0
+  fi
+
+  sleep 2
+done
+
+echo "Backend failed to start!"
+docker logs ${CONTAINER_NAME}
+exit 1
+
         '''
       }
     }
