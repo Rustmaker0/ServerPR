@@ -27,7 +27,7 @@ pipeline {
       steps {
         sh '''
           echo "Building backend image..."
-          docker build --network=bridge -t serverpr-web:latest .
+          DOCKER_BUILDKIT=0 docker build -t serverpr-web:latest .
         '''
       }
     }
@@ -65,7 +65,7 @@ pipeline {
             sleep 2
           done
 
-          echo "Backend failed to start"
+          echo "Backend failed to start!"
           docker compose logs
           exit 1
         '''
@@ -86,7 +86,7 @@ pipeline {
   }
 
   post {
-    success { echo '🚀 Deploy OK' }
+    success { echo '🚀 Deploy OK — everything is running' }
     failure { echo '❌ Deploy failed' }
   }
 }
