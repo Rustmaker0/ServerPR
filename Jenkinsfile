@@ -1,146 +1,73 @@
 pipeline {
   agent any
 
-  options {
-    timestamps()
-    disableConcurrentBuilds()
-    timeout(time: 40, unit: 'MINUTES')
-  }
-
   environment {
-    REPO_URL       = 'https://github.com/Rustmaker0/ServerPR.git'
-    BRANCH         = 'main'
-    GITHUB_CREDS   = 'github-token'
-
-    IMAGE_NAME_BASE = 'serverpr-web'
-    IMAGE_TAG       = 'latest'
-    IMAGE_NAME      = "${IMAGE_NAME_BASE}:${IMAGE_TAG}"
-    CONTAINER_NAME  = 'serverpr-web'
-    APP_PATH        = '/opt/app'
-    GUNICORN_PORT   = '8000'
+    REPO_URL     = 'https://github.com/Rustmaker0/ServerPR.git'
+    BRANCH       = 'main'
+    GITHUB_CREDS = 'github-token'
   }
 
   stages {
 
-    stage('Prep workspace') {
+    stage('Prep Workspace') {
       steps { cleanWs() }
     }
 
-    stage('Checkout (shallow, no-tags, 30m)') {
+    stage('Checkout') {
       steps {
-        script {
-          checkout([$class: 'GitSCM',
-            branches: [[name: "*/${BRANCH}"]],
-            userRemoteConfigs: [[url: REPO_URL, credentialsId: GITHUB_CREDS?.trim() ? GITHUB_CREDS : null]],
-            extensions: [[$class: 'CloneOption', depth: 1, noTags: true, shallow: true, timeout: 30]]
-          ])
-
-          env.IMAGE_TAG  = sh(returnStdout: true, script: "git rev-parse --short=12 HEAD").trim()
-          env.IMAGE_NAME = "${IMAGE_NAME_BASE}:${IMAGE_TAG}"
-
-          echo "Building image: ${env.IMAGE_NAME}"
-        }
+        checkout([$class: 'GitSCM',
+          branches: [[name: "*/${BRANCH}"]],
+          userRemoteConfigs: [[url: REPO_URL, credentialsId: GITHUB_CREDS]],
+          extensions: [[$class: 'CloneOption', shallow: true, noTags: true, depth: 1]]
+        ])
       }
     }
 
-    stage('Preflight checks') {
+    stage('Build Docker image') {
       steps {
-        sh '''#!/bin/bash
-          set -euo pipefail
-          test -f Dockerfile || { echo "Dockerfile missing"; exit 1; }
-          test -f requirements.txt || { echo "requirements.txt missing"; exit 1; }
-
-          echo "Preflight OK"
+        sh '''
+          docker build -t serverpr-web:latest .
         '''
       }
     }
 
-    stage('Build backend Docker image') {
+    stage('Stop old container') {
       steps {
         sh '''
-          set -e
-          echo "Disk before:"; df -h || true
-
-          CACHE_DIR="${WORKSPACE}/.docker_cache"
-          mkdir -p "$CACHE_DIR"
-
-          echo "Using build cache at $CACHE_DIR"
-
-          DOCKER_BUILDKIT=1 docker build \
-            --pull \
-            --network=host \
-            --build-arg BUILDKIT_INLINE_CACHE=1 \
-            -t "${IMAGE_NAME}" .
-
-          docker image tag "${IMAGE_NAME}" "${IMAGE_NAME_BASE}:latest" || true
+          # Останавливаем старый контейнер app_web_1 если он существует
+          docker compose -f docker-compose.yml down || true
         '''
       }
     }
 
-    stage('Stop anything using port 8000') {
+    stage('Start new container') {
       steps {
         sh '''
-          echo "Checking containers that occupy port 8000…"
-
-          # Найти контейнеры, где публичный порт == 8000
-          USED=$(docker ps --format "{{.ID}} {{.Ports}}" | grep ":8000->" | awk '{print $1}' || true)
-
-          if [ -n "$USED" ]; then
-            echo "Containers using port 8000: $USED"
-            docker stop $USED || true
-            docker rm $USED || true
-          else
-            echo "No containers use port 8000."
-          fi
-
-          # На всякий случай останавливаем контейнер по имени
-          docker ps --filter name=${CONTAINER_NAME} -q | xargs -r docker stop || true
-          docker ps -a --filter name=${CONTAINER_NAME} -q | xargs -r docker rm || true
+          # Запускаем backend + все зависимости строго через compose
+          docker compose -f docker-compose.yml up -d --force-recreate --build
         '''
       }
     }
 
-    stage('Prepare env & volumes') {
+    stage('Check backend health') {
       steps {
         sh '''
-          set -e
-          mkdir -p ${APP_PATH} ${APP_PATH}/media ${APP_PATH}/staticfiles
-          [ -f ${APP_PATH}/db.sqlite3 ] || install -m 664 /dev/null ${APP_PATH}/db.sqlite3
+          echo "Waiting for backend..."
 
-          if [ -f .env ]; then
-            install -m 600 .env ${APP_PATH}/.env
-          elif [ -f .env.example ]; then
-            cp .env.example ${APP_PATH}/.env
-          fi
-
-          grep -q '^DJANGO_SETTINGS_MODULE=' ${APP_PATH}/.env 2>/dev/null || \
-            echo 'DJANGO_SETTINGS_MODULE=RoadData.settings_prod' >> ${APP_PATH}/.env
-        '''
-      }
-    }
-
-    stage('Run new container') {
-      steps {
-        sh '''
-          set -e
-          docker run -d --name ${CONTAINER_NAME} \
-            --restart unless-stopped \
-            --env-file ${APP_PATH}/.env \
-            -p 127.0.0.1:${GUNICORN_PORT}:${GUNICORN_PORT} \
-            -v ${APP_PATH}/db.sqlite3:/app/db.sqlite3 \
-            -v ${APP_PATH}/media:/app/media \
-            -v ${APP_PATH}/staticfiles:/app/staticfiles \
-            "${IMAGE_NAME}"
-
-          echo "Waiting backend to start..."
           for i in $(seq 1 30); do
-            code=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:${GUNICORN_PORT}/api/transports/ || true)
+            code=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8000/api/transports/ || true)
+
             if [ "$code" = "200" ] || [ "$code" = "401" ] || [ "$code" = "403" ]; then
-              echo "Backend up (HTTP $code)"; break
+              echo "Backend is UP (HTTP $code)"
+              exit 0
             fi
+
             sleep 2
-            if [ $i -eq 30 ]; then echo "Backend did not start"; docker logs ${CONTAINER_NAME}; exit 1; fi
           done
+
+          echo "Backend did not start correctly"
+          docker compose logs
+          exit 1
         '''
       }
     }
@@ -148,49 +75,19 @@ pipeline {
     stage('Migrate & Collectstatic') {
       steps {
         sh '''
-          set -e
-          docker exec ${CONTAINER_NAME} python manage.py migrate --noinput
-          docker exec ${CONTAINER_NAME} python manage.py collectstatic --noinput
+          docker compose exec -T app_web python manage.py migrate --noinput
+          docker compose exec -T app_web python manage.py collectstatic --noinput
         '''
       }
     }
-
-    stage('Build frontend (admin) & publish') {
-      when { expression { fileExists('admin/package.json') } }
-      steps {
-        sh '''
-          set -e
-          UID=$(id -u)
-          GID=$(id -g)
-
-          docker volume create npm_cache || true
-
-          docker run --rm \
-            -u root \
-            -v npm_cache:/tmp/.npm \
-            bash -c "chown -R ${UID}:${GID} /tmp/.npm || true"
-
-          docker run --rm -u $UID:$GID \
-            -e HOME=/tmp \
-            -v npm_cache:/tmp/.npm \
-            -v "$PWD/admin:/app" -w /app node:20 bash -lc '
-              npm ci --prefer-offline --no-audit --fund=false || npm install
-              npm run build
-            '
-
-          docker run --rm \
-            -v "$PWD/admin/dist:/src:ro" \
-            -v "/opt/app/admin/dist:/dst" \
-            alpine sh -lc 'rm -rf /dst/* && cp -r /src/* /dst/'
-        '''
-      }
-    }
-
   }
 
   post {
-    success { echo '✅ Deploy OK' }
-    failure { echo '❌ Deploy FAILED' }
-    always  { sh 'echo "Disk after:" && df -h || true' }
+    success {
+      echo '🚀 Deploy OK'
+    }
+    failure {
+      echo '❌ Deploy failed'
+    }
   }
 }
