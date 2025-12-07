@@ -42,7 +42,7 @@ pipeline {
           echo "Building backend image..."
 
           # ВАЖНО: BuildKit выключен
-          DOCKER_BUILDKIT=0 docker build --no-cache -t serverpr-web:latest .
+          DOCKER_BUILDKIT=0 docker build --no-cache -t ${IMAGE_NAME} .
         '''
       }
     }
