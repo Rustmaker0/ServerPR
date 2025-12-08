@@ -26,19 +26,6 @@ pipeline {
       steps { cleanWs() }
     }
 
-   stage('Checkout (clean)') {
-  steps {
-    deleteDir()  // Полное удаление workspace
-    checkout([$class: 'GitSCM',
-      branches: [[name: "*/${BRANCH}"]],
-      userRemoteConfigs: [[url: REPO_URL, credentialsId: GITHUB_CREDS]],
-      extensions: [
-        [$class: 'WipeWorkspace'], // Полная очистка
-        [$class: 'CloneOption', depth: 1, noTags: false, shallow: true]
-      ]
-    ])
-  }
-}
 
     stage('Build Docker image') {
       steps {
