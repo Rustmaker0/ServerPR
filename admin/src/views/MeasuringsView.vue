@@ -884,6 +884,89 @@ const transportsById = computed(() => _.keyBy(transports.value, x => x.id));
 const publicTransportsById = computed(() => _.keyBy(publicTransports.value, x => x.id));
 // УДАЛЕНО: publicTransportsNumbersById больше не используется
 const usersById = computed(() => _.keyBy(users.value, x => x.id));
+// Ключи для localStorage
+const STORAGE_KEYS = {
+  FILTERS: 'measuring_filters',
+  HIDDEN_MEASUREMENTS: 'hidden_measurements',
+  HIDDEN_INTENSIVITIES: 'hidden_intensivities',
+  HIDDEN_PASSENGERS: 'hidden_passengers'
+};
+
+// Функция для сохранения фильтров
+const saveFiltersToStorage = () => {
+  try {
+    const filtersData = {
+      search: filters.value.search,
+      measuringId: filters.value.measuringId,
+      user: filters.value.user,
+      type: filters.value.type,
+      dateRange: { ...filters.value.dateRange },
+      timeRange: { ...filters.value.timeRange },
+      daysOfWeek: [...filters.value.daysOfWeek],
+      streetName: filters.value.streetName,
+      transportTypes: [...filters.value.transportTypes],
+      passengerTransportTypes: [...filters.value.passengerTransportTypes],
+      isDeleted: filters.value.isDeleted,
+      mapSelection: filters.value.mapSelection ? {
+        type: filters.value.mapSelection.type,
+        lat: filters.value.mapSelection.lat,
+        lng: filters.value.mapSelection.lng,
+        radius: filters.value.mapSelection.radius,
+        points: filters.value.mapSelection.points ? 
+          [...filters.value.mapSelection.points] : []
+      } : null
+    };
+    
+    localStorage.setItem(STORAGE_KEYS.FILTERS, JSON.stringify(filtersData));
+    
+    // Сохраняем скрытые элементы
+    localStorage.setItem(STORAGE_KEYS.HIDDEN_MEASUREMENTS, JSON.stringify(hiddenMeasurements.value));
+    localStorage.setItem(STORAGE_KEYS.HIDDEN_INTENSIVITIES, JSON.stringify(hiddenIntensivities.value));
+    localStorage.setItem(STORAGE_KEYS.HIDDEN_PASSENGERS, JSON.stringify(hiddenPassengers.value));
+    
+    console.log('Filters saved to storage');
+  } catch (error) {
+    console.error('Error saving filters to storage:', error);
+  }
+};
+
+// Функция для загрузки фильтров
+const loadFiltersFromStorage = () => {
+  try {
+    const savedFilters = localStorage.getItem(STORAGE_KEYS.FILTERS);
+    if (savedFilters) {
+      const parsedFilters = JSON.parse(savedFilters);
+      
+      // Восстанавливаем фильтры
+      filters.value = {
+        ...filters.value, // Базовые значения
+        ...parsedFilters
+      };
+      
+      console.log('Filters loaded from storage:', parsedFilters);
+    }
+    
+    // Восстанавливаем скрытые элементы
+    const savedHiddenMeasurements = localStorage.getItem(STORAGE_KEYS.HIDDEN_MEASUREMENTS);
+    const savedHiddenIntensivities = localStorage.getItem(STORAGE_KEYS.HIDDEN_INTENSIVITIES);
+    const savedHiddenPassengers = localStorage.getItem(STORAGE_KEYS.HIDDEN_PASSENGERS);
+    
+    if (savedHiddenMeasurements) {
+      hiddenMeasurements.value = JSON.parse(savedHiddenMeasurements);
+    }
+    if (savedHiddenIntensivities) {
+      hiddenIntensivities.value = JSON.parse(savedHiddenIntensivities);
+    }
+    if (savedHiddenPassengers) {
+      hiddenPassengers.value = JSON.parse(savedHiddenPassengers);
+    }
+    
+    console.log('Hidden items loaded from storage');
+  } catch (error) {
+    console.error('Error loading filters from storage:', error);
+  }
+};
+
 
 // Проверка активных фильтров
 const hasActiveFilters = computed(() => {
@@ -1384,6 +1467,9 @@ const applyFilters = () => {
   filtered = applyOtherFilters(filtered);
 
   filteredMeasurements.value = filtered;
+  
+  // Сохраняем фильтры после применения
+  saveFiltersToStorage();
 };
 
 const resetFilters = () => {
@@ -1571,10 +1657,14 @@ const initMap = () => {
     map.value = null;
   }
 
-  map.value = L.map(mapContainer).setView(IRKUTSK_CENTER, 13);
+  map.value = L.map(mapContainer, {
+    maxZoom: 24, 
+    maxNativeZoom: 24
+  }).setView(IRKUTSK_CENTER, 13);
   
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: ''
+    attribution: '',
+    maxZoom: 24 
   }).addTo(map.value);
 
   if (mapMode.value === 'allRoutes') {
@@ -1882,7 +1972,7 @@ const clearTempSelection = () => {
 const clearMapSelection = () => {
   filters.value.mapSelection = null;
   clearTempSelection();
-  applyFilters();
+  applyFilters(); // Теперь фильтры сохранятся
 };
 
 const resetAllFilters = () => {
@@ -1899,21 +1989,24 @@ const resetAllFilters = () => {
     streetName: '',
     transportTypes: [],
     passengerTransportTypes: [],
-    mapSelection: null, // очищаем и фильтр карты
+    mapSelection: null,
     isDeleted: 'all'
   };
   
-  // Безопасная очистка временного выбора
   tempMapSelection.value = null;
   polygonPoints.value = [];
   
-  // Сбрасываем скрытые измерения
   hiddenMeasurements.value = [];
   hiddenIntensivities.value = [];
   hiddenPassengers.value = [];
   
-  // Применяем фильтры (покажет все записи)
   filteredMeasurements.value = [...measurements.value];
+  
+  // Очищаем localStorage
+  localStorage.removeItem(STORAGE_KEYS.FILTERS);
+  localStorage.removeItem(STORAGE_KEYS.HIDDEN_MEASUREMENTS);
+  localStorage.removeItem(STORAGE_KEYS.HIDDEN_INTENSIVITIES);
+  localStorage.removeItem(STORAGE_KEYS.HIDDEN_PASSENGERS);
   
   console.log('All filters reset successfully');
 };
@@ -1922,7 +2015,7 @@ const resetRegularFilters = () => {
   console.log('Resetting regular filters...');
   
   filters.value = {
-    ...filters.value, // сохраняем текущий фильтр карты
+    ...filters.value,
     search: '',
     measuringId: '',
     user: '',
@@ -1934,21 +2027,21 @@ const resetRegularFilters = () => {
     transportTypes: [],
     passengerTransportTypes: [],
     isDeleted: 'all'
-    
   };
-   // Сбрасываем ВСЕ скрытые записи
+  
   hiddenMeasurements.value = [];
   hiddenIntensivities.value = [];
   hiddenPassengers.value = [];
   
-  // Безопасная очистка временного выбора
   tempMapSelection.value = null;
   polygonPoints.value = [];
-  // Применяем фильтры
+  
   applyFilters();
   
   console.log('Regular filters reset successfully');
 };
+
+
 
 const calculateBearing = (start, end) => {
   const startLng = start[1] * Math.PI / 180;
@@ -2366,22 +2459,10 @@ const hideMeasurement = (measuringId) => {
   if (!hiddenMeasurements.value.includes(measuringId)) {
     hiddenMeasurements.value.push(measuringId);
     applyFilters();
+    saveFiltersToStorage(); // Сохраняем после скрытия
   }
 };
 
-const hideIntensivity = (intensivityId) => {
-  if (!hiddenIntensivities.value.includes(intensivityId)) {
-    hiddenIntensivities.value.push(intensivityId);
-    applyFilters();
-  }
-};
-
-const hidePassenger = (passengerId) => {
-  if (!hiddenPassengers.value.includes(passengerId)) {
-    hiddenPassengers.value.push(passengerId);
-    applyFilters();
-  }
-};
 
 // Функции для экспорта
 const exportToExcel = () => {
@@ -2921,8 +3002,16 @@ onBeforeMount(async() => {
   await fetchUsers();
   await fetchTransports();
   await fetchPublicTransports();
-  // УДАЛЕНО: fetchPublicTransportsNumbers больше не используется
   await fetchData();
+  
+  // Загружаем сохраненные фильтры ПОСЛЕ загрузки данных
+  loadFiltersFromStorage();
+  
+  // Применяем загруженные фильтры
+  if (hasActiveFilters.value) {
+    applyFilters();
+  }
+  
   setupGlobalVM();
 });
 </script>
