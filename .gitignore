@@ -14,7 +14,7 @@ admin/1.2.txt
 
 .venv/
 env/
-
+db.sqlite3
 
 # логи/мусор
 *.log

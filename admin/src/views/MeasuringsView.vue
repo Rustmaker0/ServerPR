@@ -561,9 +561,20 @@
             >
               <i class="bi bi-x-circle"></i> Сбросить фильтры
             </button>
-            <button class="btn btn-outline-secondary btn-sm" @click="">
-              <i class="bi bi-file-code"></i> Отчёт
-            </button>
+            
+        
+                <ReportComponent 
+                  :measurements="measurements"
+                  :filteredMeasurements="filteredMeasurements"
+                  :transports="transports"
+                  :publicTransports="publicTransports"
+                  :hiddenMeasurements="hiddenMeasurements"
+                  :hiddenIntensivities="hiddenIntensivities"
+                  :hiddenPassengers="hiddenPassengers"
+                  :filters="filters"
+                  @close="saveFiltersToStorage"
+                />
+            
             <!-- Кнопки выгрузки для таблицы -->
             <button class="btn btn-sm btn-success" @click="exportToExcel">
               <i class="bi bi-file-earmark-excel"></i> Выгрузка в Excel
@@ -793,7 +804,7 @@ import _ from 'lodash';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import * as XLSX from 'xlsx';
-import AdminOnly from '@/components/AdminOnly.vue'
+import ReportComponent from '@/components/ReportComponent.vue';
 import { useAuthStore } from '@/stores/auth'
 import { Modal } from 'bootstrap';
 
