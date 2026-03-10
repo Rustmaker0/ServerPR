@@ -14,7 +14,11 @@ admin/1.2.txt
 
 .venv/
 env/
+<<<<<<< HEAD
 db.sqlite3
+=======
+
+>>>>>>> 5a3c5e156fd3010254bb84ba5689da9dff228d75
 
 # логи/мусор
 *.log

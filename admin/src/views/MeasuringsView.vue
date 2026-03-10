@@ -561,6 +561,7 @@
             >
               <i class="bi bi-x-circle"></i> Сбросить фильтры
             </button>
+
             
         
                 <ReportComponent 
@@ -574,7 +575,8 @@
                   :filters="filters"
                   @close="saveFiltersToStorage"
                 />
-            
+          
+
             <!-- Кнопки выгрузки для таблицы -->
             <button class="btn btn-sm btn-success" @click="exportToExcel">
               <i class="bi bi-file-earmark-excel"></i> Выгрузка в Excel
@@ -804,7 +806,11 @@ import _ from 'lodash';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import * as XLSX from 'xlsx';
+
 import ReportComponent from '@/components/ReportComponent.vue';
+
+import AdminOnly from '@/components/AdminOnly.vue'
+
 import { useAuthStore } from '@/stores/auth'
 import { Modal } from 'bootstrap';
 
